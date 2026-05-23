@@ -983,7 +983,7 @@ def load_data():
         if not os.path.exists(DATA_FILE):
             default_data = {
                 "users": [], "services_data": {}, "forward_groups": [],
-                "main_otp_link": "https://t.me/", "watermark": "DXA UNIVERSE",
+                "main_otp_link": "https://t.me/", "watermark": "SpyX Premium",
                 "force_join_enabled": False, "force_join_channels": [],
                 "otp_counts": {}, "leaderboard": {},
                 "balances": {}, "refers": {}, "withdrawals": [],
