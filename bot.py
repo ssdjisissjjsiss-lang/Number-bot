@@ -2263,7 +2263,7 @@ def show_support(chat_id, first_name):
         f"┗━━━━━━━ ⚡ ━━━━━━━┛"
     )
     markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(ibtn("🎧 SUPPORT", url="https://t.me/Trusted4533", style="success"), ibtn("🔙 BACK", callback_data="close_menu", style="danger"))
+    markup.add(ibtn("🎧 SUPPORT", url="https://t.me/sadhin8miya", style="success"), ibtn("🔙 BACK", callback_data="close_menu", style="danger"))
     safe_edit(chat_id, text, markup)
 
 def show_leaderboard(chat_id, message_id=None):
@@ -4175,5 +4175,5 @@ if __name__ == "__main__":
     print("🔄 Starting Global SMS Listener...")
     threading.Thread(target=global_sms_listener, daemon=True).start()
     
-    print("👑 DXA UNIVERSE - Bot Running with Custom Colorful Buttons! 👑")
+    print("👑 SpyX Premium - Bot Running with Custom Colorful Buttons! 👑")
     bot.infinity_polling(timeout=30, long_polling_timeout=25, allowed_updates=["message", "callback_query"])
