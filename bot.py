@@ -65,8 +65,8 @@ def rbtn(text, style=None):
 
 
 # --- CONFIGURATION ---
-TOKEN = "89289869AFupmozUWTcy--r_lzMx9crVc8vC0pCY"
-ADMIN_ID = 8280649
+TOKEN = "8194162003:AAFArsa7IIyjGPYselHX7OvGYi83nnXIkwc"
+ADMIN_ID = 7095358778
 
 
 bot = telebot.TeleBot(TOKEN, threaded=True, num_threads=50)
