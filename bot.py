@@ -65,7 +65,7 @@ def rbtn(text, style=None):
 
 
 # --- CONFIGURATION ---
-TOKEN = "7907217678:AAGWhPi2IwX714eL2-zmS3cGXJHvDoH5do8"
+TOKEN = "8194162003:AAFArsa7IIyjGPYselHX7OvGYi83nnXIkwc"
 ADMIN_ID = 7095358778
 
 
@@ -989,7 +989,7 @@ def load_data():
                 "balances": {}, "refers": {}, "withdrawals": [],
                 "settings": {
                     "cooldown": 60,
-                    "num_per_request": 5, "support_link": "https://t.me/ADMIN_ASIK"
+                    "num_per_request": 5, "support_link": "https://t.me/sadhin8miya"
                 },
                 "panels": {}, "apps": [], "month_sms": 0, "today_sms": 0, "sms_date": "",
                 "traffic_log": {}, "extra_admins": [], "banned_users": [],
@@ -1006,7 +1006,7 @@ def load_data():
             if "settings" not in data: 
                 data["settings"] = {
                     "cooldown": 60,
-                    "num_per_request": 5, "support_link": "https://t.me/ADMIN_ASIK"
+                    "num_per_request": 5, "support_link": "https://t.me/sadhin8miya"
                 }
             if "panels" not in data: data["panels"] = {}
             if "apps" not in data: data["apps"] = DEFAULT_APPS
