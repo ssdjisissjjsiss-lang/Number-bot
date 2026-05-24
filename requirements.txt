@@ -1,4 +1,4 @@
-pyTelegramBotAPI
+python-telegram-bot==20.7
 requests
-pyotp
+beautifulsoup4
 urllib3
