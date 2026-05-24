@@ -21,8 +21,10 @@ from datetime import datetime
 _old_inline_dict = InlineKeyboardButton.to_dict
 def _new_inline_dict(self):
     d = _old_inline_dict(self)
-    if hasattr(self, 'style'): 
+    if hasattr(self, 'style') and self.style is not None: 
         d['style'] = self.style
+    elif 'style' in d and d['style'] is None:
+        del d['style']
         
     if hasattr(self, 'custom_copy_text') and self.custom_copy_text:
         d['copy_text'] = {'text': str(self.custom_copy_text)}
@@ -35,7 +37,10 @@ InlineKeyboardButton.to_dict = _new_inline_dict
 _old_kb_dict = KeyboardButton.to_dict
 def _new_kb_dict(self):
     d = _old_kb_dict(self)
-    if hasattr(self, 'style'): d['style'] = self.style
+    if hasattr(self, 'style') and self.style is not None:
+        d['style'] = self.style
+    elif 'style' in d and d['style'] is None:
+        del d['style']
     return d
 KeyboardButton.to_dict = _new_kb_dict
 
@@ -61,11 +66,27 @@ def rbtn(text, style=None):
     b = KeyboardButton(text=text)
     if style: b.style = style
     return b
+
+ALL_STYLES = ["primary", "success", "danger", None]
+
+def _next_style(*exclude):
+    """Return a style different from all excluded styles."""
+    for s in ALL_STYLES:
+        if s not in exclude:
+            return s
+    return ALL_STYLES[0]
+
+def _trail_styles(count, cycle):
+    """Continue the color cycle for trailing (add/back) buttons so they never repeat the last items."""
+    c_len = len(cycle)
+    add_s = cycle[count % c_len]
+    back_s = cycle[(count + 1) % c_len]
+    return add_s, back_s
 # ============================================
 
 
 # --- CONFIGURATION ---
-TOKEN = "7907217678:AAGWhPi2IwX714eL2-zmS3cGXJHvDoH5do8"
+TOKEN = "8194162003:AAFArsa7IIyjGPYselHX7OvGYi83nnXIkwc"
 ADMIN_ID = 7095358778
 
 
@@ -250,24 +271,11 @@ PANEL_FORMATS = {
     },
     "konekta": {
         "label": "Konekta Premium",
-        "login_endpoint": "/login",
-        "get_number": "/api/getNumber?service={service}&country={country}",
-        "get_sms": "/api/getStatus?id={number_id}",
-        "http_method": "GET",
-        "auth_header": "",
-        "auth_type": "session",
-        "number_field": "number",
-        "otp_field": "code",
-        "sms_field": "sms",
-        "success_field": "status",
-        "success_value": "OK",
-        "id_field": "id"
-    },
-    "timesms": {
-        "label": "Time SMS",
         "login_endpoint": "/signin",
-        "get_number": "/api/getNumber?service={service}&country={country}",
-        "get_sms": "/api/getStatus?id={number_id}",
+        "login_page": "/sign-in",
+        "get_number": "/agent/res/data_smstestnumbers.php?frange=&fclient=",
+        "get_sms": "/agent/res/data_smscdr.php?fdate1={date1}&fdate2={date2}&fnum={number}&frange=&fclient=&fcli=&fgdate=&fgmonth=&fgrange=&fgclient=&fgnumber=&fgcli=&fg=0&iDisplayLength=20&iSortCol_0=0&sSortDir_0=desc",
+        "get_test_sms": "/agent/res/data_testsmscdr.php?fnum={number}&iDisplayLength=20&iSortCol_0=0&sSortDir_0=desc",
         "http_method": "GET",
         "auth_header": "",
         "auth_type": "session",
@@ -278,7 +286,29 @@ PANEL_FORMATS = {
         "success_value": "OK",
         "id_field": "id",
         "has_captcha": True,
-        "captcha_type": "math"
+        "captcha_type": "math",
+        "ajax_header": True,
+        "client_prefix": "/agent"
+    },
+    "timesms": {
+        "label": "Time SMS",
+        "login_endpoint": "/signin",
+        "login_page": "/login",
+        "get_number": "/client/res/data_smstestnumbers.php?frange=&fclient=",
+        "get_sms": "/client/res/data_smscdr.php?fdate1={date1}&fdate2={date2}&fnum={number}&frange=&fcli=&fg=0&iDisplayLength=20&iSortCol_0=0&sSortDir_0=desc",
+        "http_method": "GET",
+        "auth_header": "",
+        "auth_type": "session",
+        "number_field": "number",
+        "otp_field": "code",
+        "sms_field": "sms",
+        "success_field": "status",
+        "success_value": "OK",
+        "id_field": "id",
+        "has_captcha": True,
+        "captcha_type": "math",
+        "ajax_header": True,
+        "client_prefix": "/client"
     },
     "grand_panel": {
         "label": "Grand Panel",
@@ -324,6 +354,22 @@ PANEL_FORMATS = {
         "success_value": "success",
         "id_field": "num",
         "data_wrapper": "data"
+    },
+    "ints_login": {
+        "label": "INTS Login (SMS CDR)",
+        "login_endpoint": "/signin",
+        "get_number": "",
+        "get_sms": "/agent/res/data_smscdr.php",
+        "http_method": "GET",
+        "auth_header": "",
+        "auth_type": "session",
+        "has_captcha": True,
+        "number_field": "num",
+        "otp_field": "otp",
+        "sms_field": "message",
+        "success_field": "status",
+        "id_field": "num",
+        "data_wrapper": "aaData"
     }
 }
 
@@ -346,7 +392,13 @@ def _get_api_base(api_url, fmt_name=""):
         if idx != -1:
             return url[:idx + 6]
         return url
-    if fmt_name in ("ints", "ints_v2"):
+    if fmt_name == "timesms":
+        parsed = urlparse(url)
+        return f"{parsed.scheme}://{parsed.netloc}"
+    if fmt_name == "konekta":
+        parsed = urlparse(url)
+        return f"{parsed.scheme}://{parsed.netloc}"
+    if fmt_name in ("ints", "ints_v2", "ints_login"):
         idx = url.lower().find("/ints")
         if idx != -1:
             return url[:idx + 5]
@@ -378,6 +430,8 @@ def detect_panel_format(api_url, api_key=""):
         return "ins_agent"
     # Detect ints-type panels from URL
     if url.endswith("/ints") or "/ints/" in url or "/ints?" in url:
+        if not api_key:
+            return "ints_login"
         return "ints"
     # Detect NumberPanel
     if "numberpanel" in url.lower():
@@ -931,16 +985,21 @@ def safe_edit(chat_id, text, reply_markup=None, message_id=None):
     clean_text = clean_html_tags(text)
     target_msg_id = message_id if message_id else (menu_message_id.get(chat_id))
     if target_msg_id:
-        for _attempt in range(2):
+        for _attempt in range(3):
             try:
                 return bot.edit_message_text(clean_text, chat_id=chat_id, message_id=target_msg_id, parse_mode="HTML", reply_markup=reply_markup)
             except Exception as e:
                 err = str(e).lower()
                 if "message is not modified" in err:
+                    if reply_markup:
+                        try:
+                            return bot.edit_message_reply_markup(chat_id=chat_id, message_id=target_msg_id, reply_markup=reply_markup)
+                        except:
+                            pass
                     return None
                 if "message to edit not found" in err:
                     break
-                if _attempt == 0 and ("timeout" in err or "connection" in err):
+                if _attempt < 2 and ("timeout" in err or "connection" in err or "retry" in err):
                     time.sleep(0.5)
                     continue
                 break
@@ -965,7 +1024,7 @@ def safe_edit_2fa(chat_id, text, reply_markup=None):
 
 def safe_send(chat_id, text, reply_markup=None, reply_to=None):
     clean_text = clean_html_tags(text)
-    for _attempt in range(2):
+    for _attempt in range(3):
         try:
             msg = bot.send_message(chat_id, clean_text, parse_mode="HTML", reply_markup=reply_markup, reply_to_message_id=reply_to)
             if msg:
@@ -973,7 +1032,7 @@ def safe_send(chat_id, text, reply_markup=None, reply_to=None):
             return msg
         except Exception as e:
             err = str(e).lower()
-            if _attempt == 0 and ("timeout" in err or "connection" in err):
+            if _attempt < 2 and ("timeout" in err or "connection" in err or "retry" in err):
                 time.sleep(0.5)
                 continue
             return None
@@ -983,7 +1042,7 @@ def load_data():
         if not os.path.exists(DATA_FILE):
             default_data = {
                 "users": [], "services_data": {}, "forward_groups": [],
-                "main_otp_link": "https://t.me/", "watermark": "SpyX Premium",
+                "main_otp_link": "https://t.me/", "watermark": "CREATED BY LEAVE",
                 "force_join_enabled": False, "force_join_channels": [],
                 "otp_counts": {}, "leaderboard": {},
                 "balances": {}, "refers": {}, "withdrawals": [],
@@ -1006,7 +1065,7 @@ def load_data():
             if "settings" not in data: 
                 data["settings"] = {
                     "cooldown": 60,
-                    "num_per_request": 5, "support_link": "https://t.me/sadhin8miya"
+                    "num_per_request": 5, "support_link": "https://t.me/ADMIN_ASIK"
                 }
             if "panels" not in data: data["panels"] = {}
             if "apps" not in data: data["apps"] = DEFAULT_APPS
@@ -1148,7 +1207,7 @@ def do_login_session(panel):
         })
         
         # For ints-type panels, handle form login with math captcha
-        is_ints_type = api_fmt in ("ints", "ints_v2", "numberpanel", "sms_panel", "konekta", "timesms", "grand_panel", "pscall")
+        is_ints_type = api_fmt in ("ints", "ints_v2", "ints_login", "numberpanel", "sms_panel", "konekta", "timesms", "grand_panel", "pscall")
         
         if is_ints_type:
             # Step 1: GET the login page to extract captcha
@@ -1160,10 +1219,13 @@ def do_login_session(panel):
                     break
             
             login_ep = fmt.get("login_endpoint", "/signin")
+            login_page = fmt.get("login_page", "")
             full_login_url = f"{base_url}{login_ep}"
             
+            # GET the login/captcha page (some panels have separate login page vs POST endpoint)
+            captcha_page_url = f"{base_url}{login_page}" if login_page else full_login_url
             try:
-                page_res = session.get(full_login_url, timeout=15, allow_redirects=True)
+                page_res = session.get(captcha_page_url, timeout=15, allow_redirects=True)
                 page_html = page_res.text
             except:
                 page_html = ""
@@ -1178,7 +1240,17 @@ def do_login_session(panel):
                 login_data["captcha"] = captcha_answer
             
             # Try form POST first (common for ints panels)
-            res = session.post(full_login_url, data=login_data, timeout=15, allow_redirects=True)
+            res = session.post(full_login_url, data=login_data, timeout=15, allow_redirects=False)
+            # Handle redirect manually for panels that redirect to relative paths
+            if res.status_code in (301, 302):
+                loc = res.headers.get("Location", "")
+                if loc and "login" not in loc.lower() and "signin" not in loc.lower():
+                    # Successful login redirect
+                    redirect_url = loc if loc.startswith("http") else f"{base_url}/{loc.lstrip('./')}"
+                    res = session.get(redirect_url, timeout=15, allow_redirects=True)
+                else:
+                    # Redirect back to login = failed
+                    res = session.get(f"{base_url}{login_ep}", timeout=15, allow_redirects=True)
             
             # Check if login was successful
             # Success indicators: redirected to dashboard, no "error" in response, session cookies set
@@ -1212,13 +1284,24 @@ def do_login_session(panel):
             if login_success:
                 # Try to extract token from page or API
                 token = ""
+                sesskey = ""
                 try:
                     token_match = re.search(r'token["\']?\s*[:=]\s*["\']([^"\']+)["\']', res.text)
                     if token_match:
                         token = token_match.group(1)
                 except:
                     pass
-                return {"session": session, "token": token, "cookies": dict(session.cookies)}
+                # For Konekta: extract sesskey from CDR stats page
+                if api_fmt == "konekta":
+                    try:
+                        cdr_page = session.get(f"{base_url}/agent/SMSCDRStats", timeout=15, allow_redirects=True)
+                        if cdr_page.status_code == 200:
+                            sk_match = re.search(r'sesskey=([^&"\']+)', cdr_page.text)
+                            if sk_match:
+                                sesskey = sk_match.group(1)
+                    except:
+                        pass
+                return {"session": session, "token": token, "sesskey": sesskey, "cookies": dict(session.cookies)}
             
             # Try alternative login endpoints
             alt_endpoints = ["/signmein", "/signin", "/login"]
@@ -1317,8 +1400,8 @@ def get_main_menu(user_id):
     data = load_data()
     markup = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(rbtn("📱 GET NUMBER", "primary"), rbtn("📊 TRAFFIC", "success"))
-    markup.add(rbtn("🔐 2FA ONLINE", "danger"), rbtn("🏆 LEADERBOARD", "primary"))
-    markup.add(rbtn("📈 STOCK INFO", "success"), rbtn("🛠️ SUPPORT", "primary"))
+    markup.add(rbtn("🔐 2FA ONLINE", "danger"), rbtn("🏆 LEADERBOARD"))
+    markup.add(rbtn("📈 STOCK INFO", "primary"), rbtn("🛠️ SUPPORT", "success"))
     if user_id == ADMIN_ID or user_id in data.get("extra_admins", []):
         markup.add(rbtn("⚙️ ADMIN PANEL", "danger"))
     return markup
@@ -1326,28 +1409,28 @@ def get_main_menu(user_id):
 def get_2fa_menu():
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(ibtn("🔐 GENERATE 2FA CODE", callback_data="2fa_generate", style="primary"),
-               ibtn("🔙 BACK TO MAIN MENU", callback_data="2fa_back", style="danger"))
+               ibtn("🔙 BACK TO MAIN MENU", callback_data="2fa_back", style="success"))
     return markup
 
 def get_leaderboard_menu():
     markup = InlineKeyboardMarkup()
     markup.add(ibtn("🔄 REFRESH", callback_data="refresh_leaderboard", style="primary"))
-    markup.add(ibtn("❌ CLOSE", callback_data="close_menu", style="danger"))
+    markup.add(ibtn("❌ CLOSE", callback_data="close_menu", style="success"))
     return markup
 
 def get_admin_menu(user_id):
     markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(ibtn("📋 MANAGE PANELS", callback_data="admin_manage_panels", style="success"),
-               ibtn("📦 MANAGE APPS", callback_data="admin_manage_apps", style="primary"))
+    markup.add(ibtn("📋 MANAGE PANELS", callback_data="admin_manage_panels", style="primary"),
+               ibtn("📦 MANAGE APPS", callback_data="admin_manage_apps", style="success"))
     markup.add(ibtn("⚙️ SYSTEM", callback_data="admin_system", style="danger"),
-               ibtn("👤 USER VIEW", callback_data="admin_user_view", style="primary"))
-    markup.add(ibtn("📢 BROADCAST", callback_data="admin_broadcast", style="danger"),
+               ibtn("👤 USER VIEW", callback_data="admin_user_view"))
+    markup.add(ibtn("📢 BROADCAST", callback_data="admin_broadcast", style="success"),
                ibtn("🔗 OTP GROUPS", callback_data="admin_group_settings", style="primary"))
-    markup.add(ibtn("📣 FORCE JOIN", callback_data="admin_force_join", style="success"),
-               ibtn("💎 WATERMARK", callback_data="admin_set_watermark", style="primary"))
+    markup.add(ibtn("📣 FORCE JOIN", callback_data="admin_force_join"),
+               ibtn("💎 WATERMARK", callback_data="admin_set_watermark", style="danger"))
     if user_id == ADMIN_ID:
-        markup.add(ibtn("👮 MANAGE ADMIN", callback_data="admin_manage_admins", style="danger"))
-    markup.add(ibtn("❌ CLOSE", callback_data="close_menu", style="danger"))
+        markup.add(ibtn("👮 MANAGE ADMIN", callback_data="admin_manage_admins", style="primary"))
+    markup.add(ibtn("❌ CLOSE", callback_data="close_menu", style="success"))
     return markup
 
 def get_force_join_menu():
@@ -1359,7 +1442,7 @@ def get_force_join_menu():
     
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(ibtn(f"TOGGLE: {status_text}", callback_data="toggle_force_join", style=status_style))
-    color_cycle = ["primary", "success", "danger"]
+    color_cycle = ["primary", "success", "danger", None]
     for idx, ch in enumerate(channels):
         display = get_force_channel_link(ch) if get_force_channel_link(ch) else str(get_force_channel_chat_id(ch))
         ch_type_str = get_force_channel_type(ch)
@@ -1371,9 +1454,10 @@ def get_force_join_menu():
             type_label = "CHANNEL"
         is_priv = isinstance(ch, dict) and is_private_invite_link(ch.get("link", ""))
         priv_icon = "🔒" if is_priv else "🌐"
-        markup.add(ibtn(f"❌ {type_icon}{priv_icon} {type_label}: {display}", callback_data=f"delfjc_{idx}", style=color_cycle[idx % 3]))
-    markup.add(ibtn("➕ ADD CHANNEL/GROUP", callback_data="add_fjc", style="primary"))
-    markup.add(ibtn("🔙 BACK", callback_data="back_to_admin", style="success"))
+        markup.add(ibtn(f"❌ {type_icon}{priv_icon} {type_label}: {display}", callback_data=f"delfjc_{idx}", style=color_cycle[idx % 4]))
+    _fjas, _fjbs = _trail_styles(len(channels), color_cycle)
+    markup.add(ibtn("➕ ADD CHANNEL/GROUP", callback_data="add_fjc", style=_fjas))
+    markup.add(ibtn("🔙 BACK", callback_data="back_to_admin", style=_fjbs))
     return markup
 
 def get_group_settings_menu():
@@ -1386,11 +1470,14 @@ def get_group_settings_menu():
     markup.add(ibtn("➕ ADD FORWARD GROUP", callback_data="add_fwd_group", style="success"))
     fwd_groups = data.get("forward_groups", [])
     if fwd_groups:
-        color_cycle_grp = ["primary", "success", "danger"]
+        color_cycle_grp = ["danger", None, "primary", "success"]
         for g_idx, grp in enumerate(fwd_groups):
             btn_count = len(grp.get('buttons', []))
-            markup.add(ibtn(f"⚙️ {grp['chat_id']} [{btn_count} BTNS]", callback_data=f"editgrp_{grp['chat_id']}", style=color_cycle_grp[g_idx % 3]))
-    markup.add(ibtn("🔙 BACK", callback_data="back_to_admin", style="primary"))
+            markup.add(ibtn(f"⚙️ {grp['chat_id']} [{btn_count} BTNS]", callback_data=f"editgrp_{grp['chat_id']}", style=color_cycle_grp[g_idx % 4]))
+        _gs, _gbs = _trail_styles(len(fwd_groups), color_cycle_grp)
+        markup.add(ibtn("🔙 BACK", callback_data="back_to_admin", style=_gs))
+    else:
+        markup.add(ibtn("🔙 BACK", callback_data="back_to_admin", style=None))
     return markup
 
 def show_edit_group_menu(chat_id, grp_id, message_id=None):
@@ -1401,17 +1488,23 @@ def show_edit_group_menu(chat_id, grp_id, message_id=None):
         return
     text = f"━━━━━━━━━━━━━━━\n《 ⚙️ MANAGE GROUP 》\n━━━━━━━━━━━━━━━\n📱 ID: <code>{grp_id}</code>\n🔘 BUTTONS: {len(grp.get('buttons', []))}"
     markup = InlineKeyboardMarkup(row_width=1)
-    for idx, btn in enumerate(grp.get("buttons", [])):
-        markup.add(ibtn(f"❌ {btn['name']}", callback_data=f"delgrpbtn_{grp_id}_{idx}", style="danger"))
-    markup.add(ibtn("➕ ADD BUTTON", callback_data=f"addgrpbtn_{grp_id}", style="success"))
-    markup.add(ibtn("🗑️ DELETE GROUP", callback_data=f"delfwd_{grp_id}", style="danger"))
-    markup.add(ibtn("🔙 BACK", callback_data="admin_group_settings", style="primary"))
+    grp_btn_colors = ["danger", "primary", "success", None]
+    btn_list = grp.get("buttons", [])
+    for idx, btn in enumerate(btn_list):
+        markup.add(ibtn(f"❌ {btn['name']}", callback_data=f"delgrpbtn_{grp_id}_{idx}", style=grp_btn_colors[idx % 4]))
+    _n = len(btn_list)
+    _egs1 = grp_btn_colors[_n % 4]
+    _egs2 = grp_btn_colors[(_n + 1) % 4]
+    _egs3 = grp_btn_colors[(_n + 2) % 4]
+    markup.add(ibtn("➕ ADD BUTTON", callback_data=f"addgrpbtn_{grp_id}", style=_egs1))
+    markup.add(ibtn("🗑️ DELETE GROUP", callback_data=f"delfwd_{grp_id}", style=_egs2))
+    markup.add(ibtn("🔙 BACK", callback_data="admin_group_settings", style=_egs3))
     safe_edit(chat_id, text, markup, message_id)
 
 def show_panel_list(chat_id, message_id=None):
     data = load_data()
     markup = InlineKeyboardMarkup(row_width=1)
-    color_cycle = ["primary", "success", "danger"]
+    color_cycle = ["primary", "success", "danger", None]
     for idx, (panel_id, panel) in enumerate(data.get("panels", {}).items()):
         status_icon = "🟢" if panel.get("status") == "active" else "🔴"
         rng_count = len(panel.get("ranges", {}))
@@ -1424,17 +1517,21 @@ def show_panel_list(chat_id, message_id=None):
         else:
             btn_text = f"{status_icon} [AUTO] {panel['name'].upper()} | R:{rng_count} (API)"
             
-        markup.add(ibtn(btn_text, callback_data=f"panel_view|{panel_id}", style=color_cycle[idx % 3]))
+        markup.add(ibtn(btn_text, callback_data=f"panel_view|{panel_id}", style=color_cycle[idx % 4]))
         
-    markup.add(ibtn("➕ Add Panel", callback_data="add_panel", style="success"))
-    markup.add(ibtn("🔙 Back to Admin", callback_data="back_to_admin", style="primary"))
+    panel_count = len(list(data.get("panels", {}).items()))
+    _as, _bs = _trail_styles(panel_count, color_cycle)
+    markup.add(ibtn("➕ Add Panel", callback_data="add_panel", style=_as))
+    markup.add(ibtn("🔙 Back to Admin", callback_data="back_to_admin", style=_bs))
     
     total_panels = len(data.get('panels', {}))
     # Count numbers only for manual panels
     total_all_nums = sum(sum(len(r.get("numbers", [])) for r in p.get("ranges", {}).values()) for p in data.get("panels", {}).values() if p.get("fetch_type", "manual") == "manual")
     
     text = f"┌─────────────────┐\n│ 📋 <b>API Panels</b>\n├─────────────────┤\n│ Total Panels: <code>{total_panels}</code>\n│ Total Manual Numbers: <code>{total_all_nums}</code>\n└─────────────────┘"
-    safe_edit(chat_id, text, markup, message_id)
+    result = safe_edit(chat_id, text, markup, message_id)
+    if result is None and message_id:
+        safe_send(chat_id, text, markup)
 
 def show_panel_detail(chat_id, panel_id, message_id=None):
     data = load_data()
@@ -1482,37 +1579,52 @@ def show_panel_detail(chat_id, panel_id, message_id=None):
         f"└─────────────────┘"
     )
     markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(ibtn("🔍 Test Connection", callback_data=f"panel_test|{panel_id}", style="primary"))
+    markup.add(ibtn("🔍 Test Connection", callback_data=f"panel_test|{panel_id}", style="success"))
     if p_type == "api":
-        markup.add(ibtn("🔑 Set API Creds", callback_data=f"panel_setcreds|{panel_id}", style="success"))
+        markup.add(ibtn("🔑 Set API Creds", callback_data=f"panel_setcreds|{panel_id}", style="primary"))
     else:
-        markup.add(ibtn("🔐 Set Login Creds", callback_data=f"panel_setlogin|{panel_id}", style="success"))
-    markup.add(ibtn(f"📋 Format: {api_fmt.upper()}", callback_data=f"panel_format|{panel_id}", style="primary"))
-    markup.add(ibtn("📱 View Ranges", callback_data=f"panel_ranges|{panel_id}", style="primary"),
-               ibtn("✏️ Rename", callback_data=f"panel_rename|{panel_id}", style="success"))
+        markup.add(ibtn("🔐 Set Login Creds", callback_data=f"panel_setlogin|{panel_id}", style="primary"))
+    markup.add(ibtn(f"📋 Format: {api_fmt.upper()}", callback_data=f"panel_format|{panel_id}", style="danger"))
+    markup.add(ibtn("📱 View Ranges", callback_data=f"panel_ranges|{panel_id}", style="success"),
+               ibtn("✏️ Rename", callback_data=f"panel_rename|{panel_id}"))
     toggle_text = "🔴 Deactivate" if panel.get("status") == "active" else "🟢 Activate"
-    markup.add(ibtn(toggle_text, callback_data=f"panel_toggle|{panel_id}", style="danger"),
+    markup.add(ibtn(toggle_text, callback_data=f"panel_toggle|{panel_id}", style="primary"),
                ibtn("❌ Delete Panel", callback_data=f"panel_delete|{panel_id}", style="danger"))
     if p_type == "api":
-        markup.add(ibtn("🔐 Switch to Login Creds", callback_data=f"panel_switch|{panel_id}", style="primary"))
+        markup.add(ibtn("🔐 Switch to Login Creds", callback_data=f"panel_switch|{panel_id}"))
     else:
-        markup.add(ibtn("🔌 Switch to API Creds", callback_data=f"panel_switch|{panel_id}", style="primary"))
+        markup.add(ibtn("🔌 Switch to API Creds", callback_data=f"panel_switch|{panel_id}"))
     markup.add(ibtn("🔙 Back to Panels", callback_data="admin_manage_panels", style="success"))
-    safe_edit(chat_id, text, markup, message_id)
+    result = safe_edit(chat_id, text, markup, message_id)
+    if result is None and message_id:
+        safe_send(chat_id, text, markup)
 
 def show_panel_format_menu(chat_id, panel_id, message_id=None):
     data = load_data()
     panel = data.get("panels", {}).get(panel_id)
-    if not panel: return
+    if not panel:
+        safe_send(chat_id, "⚠️ Panel not found!")
+        return
     current = panel.get("api_format", detect_panel_format(panel.get("api_url", ""), panel.get("api_key", "")))
-    markup = InlineKeyboardMarkup(row_width=1)
-    for fmt_name, fmt_data in PANEL_FORMATS.items():
-        check = " \u2705" if current == fmt_name else ""
-        style = "success" if current == fmt_name else "primary"
-        markup.add(ibtn(f"{fmt_data['label']}{check}", callback_data=f"set_pfmt|{panel_id}|{fmt_name}", style=style))
-    markup.add(ibtn("\ud83d\udd27 Set Custom Endpoints", callback_data=f"panel_custom_ep|{panel_id}", style="danger"))
-    markup.add(ibtn("\ud83d\udd19 Back", callback_data=f"panel_view|{panel_id}", style="success"))
-    safe_edit(chat_id, f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u300a \ud83d\udccb <b>API FORMAT</b> \u300b\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n<b>Panel:</b> {html.escape(panel['name'])}\n<b>Current:</b> {current.upper()}\n\n<b>SELECT FORMAT:</b>", markup, message_id)
+    markup = InlineKeyboardMarkup(row_width=2)
+    fmt_items = list(PANEL_FORMATS.items())
+    row_buf = []
+    for i_fmt, (fmt_name, fmt_data) in enumerate(fmt_items):
+        check = " ✅" if current == fmt_name else ""
+        fmt_colors = ["primary", "success", "danger", None]
+        style = fmt_colors[i_fmt % 4]
+        row_buf.append(ibtn(f"{fmt_data['label']}{check}", callback_data=f"set_pfmt|{panel_id}|{fmt_name}", style=style))
+        if len(row_buf) == 2:
+            markup.add(*row_buf)
+            row_buf = []
+    if row_buf:
+        markup.add(*row_buf)
+    markup.add(ibtn("🔧 Set Custom Endpoints", callback_data=f"panel_custom_ep|{panel_id}", style="danger"))
+    markup.add(ibtn("🔙 Back", callback_data=f"panel_view|{panel_id}", style="success"))
+    text = f"━━━━━━━━━━━━━━━\n《 📋 <b>API FORMAT</b> 》\n━━━━━━━━━━━━━━━\n<b>Panel:</b> {html.escape(panel['name'])}\n<b>Current:</b> {current.upper()}\n\n<b>SELECT FORMAT:</b>"
+    result = safe_edit(chat_id, text, markup, message_id)
+    if result is None and message_id:
+        safe_send(chat_id, text, markup)
 
 def process_custom_endpoints(message, panel_id, msg_id):
     if message.text == '/cancel': return show_panel_detail(message.chat.id, panel_id, msg_id)
@@ -1529,8 +1641,7 @@ def process_custom_endpoints(message, panel_id, msg_id):
             "get_latest_sms": lines[2].strip() if len(lines) > 2 else ""
         }
         save_data(data)
-        safe_send(message.chat.id, f"\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\u2705 <b>Custom endpoints saved!</b>\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501")
-    show_panel_detail(message.chat.id, panel_id)
+    show_panel_detail(message.chat.id, panel_id, msg_id)
 
 def _auto_configure_panel(api_url, api_key):
     """Auto-detect panel format, clean URL, and test real API endpoints. Returns dict with config info."""
@@ -1567,6 +1678,11 @@ def _auto_configure_panel(api_url, api_key):
         test_endpoints = [
             f"{clean_url}/viewstats?token={api_key}&dt1={_today} 00:00:00&dt2={_today} 23:59:59&records=1",
         ]
+    elif detected_fmt == "ints_login":
+        # Login-based INTS panel — test by checking login page is reachable
+        test_endpoints = [
+            f"{clean_url}/login",
+        ]
     elif detected_fmt in ("ints", "ints_v2"):
         test_endpoints = [
             f"{clean_url}/api/getServices",
@@ -1595,6 +1711,13 @@ def _auto_configure_panel(api_url, api_key):
         try:
             res = req_session.get(ep, headers=headers, timeout=10)
             if res.status_code == 200:
+                # For ints_login, the login page returns HTML — check for login form
+                if detected_fmt == "ints_login":
+                    if "username" in res.text.lower() or "login" in res.text.lower():
+                        result["test_ok"] = True
+                        result["test_msg"] = "Login page reachable ✅"
+                        result["test_status"] = 200
+                        return result
                 try:
                     data = res.json()
                     result["test_ok"] = True
@@ -1637,12 +1760,13 @@ def test_panel_connection(chat_id, panel_id, message_id=None):
     results.append(f"🌐 Type: <b>{p_type.upper()}</b> / <b>{f_type.upper()}</b>")
     results.append("")
     
+    back_markup = InlineKeyboardMarkup().add(ibtn("🔙 Back to Panel", callback_data=f"panel_view|{panel_id}", style="primary"))
+    
     # Step 1: Test credentials
     if p_type == "api":
         if not api_url or not api_key:
             results.append("❌ <b>API credentials not set!</b>")
-            safe_send(chat_id, "\n".join(results))
-            show_panel_detail(chat_id, panel_id, message_id)
+            safe_edit(chat_id, "\n".join(results), back_markup, message_id)
             return
         
         headers = get_api_headers(panel)
@@ -1661,16 +1785,14 @@ def test_panel_connection(chat_id, panel_id, message_id=None):
             results.append(f"⚠️ <b>API Status:</b> {config['test_msg']}")
         else:
             results.append(f"❌ <b>Connection Error:</b> {config['test_msg']}")
-            safe_send(chat_id, "\n".join(results))
-            show_panel_detail(chat_id, panel_id, message_id)
+            safe_edit(chat_id, "\n".join(results), back_markup, message_id)
             return
     else:
         login_url = panel.get("login_url", "")
         username = panel.get("login_user", "")
         if not login_url or not username:
             results.append("❌ <b>Login credentials not set!</b>")
-            safe_send(chat_id, "\n".join(results))
-            show_panel_detail(chat_id, panel_id, message_id)
+            safe_edit(chat_id, "\n".join(results), back_markup, message_id)
             return
         try:
             login_sessions.pop(panel_id, None)
@@ -1687,13 +1809,11 @@ def test_panel_connection(chat_id, panel_id, message_id=None):
             else:
                 results.append("❌ <b>Login Failed!</b>")
                 results.append("<i>Check URL and credentials</i>")
-                safe_send(chat_id, "\n".join(results))
-                show_panel_detail(chat_id, panel_id, message_id)
+                safe_edit(chat_id, "\n".join(results), back_markup, message_id)
                 return
         except Exception as e:
             results.append(f"❌ <b>Login Failed:</b> {str(e)[:80]}")
-            safe_send(chat_id, "\n".join(results))
-            show_panel_detail(chat_id, panel_id, message_id)
+            safe_edit(chat_id, "\n".join(results), back_markup, message_id)
             return
     
     results.append("")
@@ -1786,16 +1906,13 @@ def test_panel_connection(chat_id, panel_id, message_id=None):
                     results.append(f"  ❌ Error: {html.escape(str(e)[:80])}")
             else:
                 nums = rng.get("numbers", [])
-                used = rng.get("used_numbers", [])
-                avail = len([n for n in nums if n not in used])
-                results.append(f"  📊 Manual: {avail}/{len(nums)} available")
+                results.append(f"  📊 Manual: {len(nums)} numbers")
             results.append("")
     
     final_text = "\n".join(results)
     if len(final_text) > 4000:
         final_text = final_text[:4000] + "\n..."
-    safe_send(chat_id, final_text)
-    show_panel_detail(chat_id, panel_id, message_id)
+    safe_edit(chat_id, final_text, back_markup, message_id)
 
 def show_panel_ranges(chat_id, panel_id, message_id=None):
     data = load_data()
@@ -1805,7 +1922,7 @@ def show_panel_ranges(chat_id, panel_id, message_id=None):
     ranges = panel.get("ranges", {})
     f_type = panel.get("fetch_type", "manual")
     markup = InlineKeyboardMarkup(row_width=1)
-    color_cycle = ["primary", "success", "danger"]
+    color_cycle = ["primary", "success", "danger", None]
     text_lines = []
     
     for idx, (rng_id, rng) in enumerate(ranges.items()):
@@ -1821,13 +1938,15 @@ def show_panel_ranges(chat_id, panel_id, message_id=None):
         if f_type == "manual":
             status_icon = "🟢" if total > 0 else "🔴"
             text_lines.append(f"{status_icon} {flag} {rng['name']} | {app_name} ({rng_code}){cc_label} | {total} nums")
-            markup.add(ibtn(f"🔧 {flag} {rng['name']} [{total}]", callback_data=f"view_range|{panel_id}|{rng_id}", style=color_cycle[idx % 3]))
+            markup.add(ibtn(f"🔧 {flag} {rng['name']} [{total}]", callback_data=f"view_range|{panel_id}|{rng_id}", style=color_cycle[idx % 4]))
         else:
             text_lines.append(f"🟢 {flag} {rng['name']} | {app_name} ({rng_code}){cc_label} | AUTO API")
-            markup.add(ibtn(f"🔧 {flag} {rng['name']} [API]", callback_data=f"view_range|{panel_id}|{rng_id}", style=color_cycle[idx % 3]))
+            markup.add(ibtn(f"🔧 {flag} {rng['name']} [API]", callback_data=f"view_range|{panel_id}|{rng_id}", style=color_cycle[idx % 4]))
             
-    markup.add(ibtn("➕ Add Range", callback_data=f"add_range|{panel_id}", style="success"))
-    markup.add(ibtn("🔙 Back to Panel", callback_data=f"panel_view|{panel_id}", style="primary"))
+    rng_count = len(ranges)
+    _ras, _rbs = _trail_styles(rng_count, color_cycle)
+    markup.add(ibtn("➕ Add Range", callback_data=f"add_range|{panel_id}", style=_ras))
+    markup.add(ibtn("🔙 Back to Panel", callback_data=f"panel_view|{panel_id}", style=_rbs))
     header = f"━━━━━━━━━━━━━━━\n《 📱 <b>Ranges — {html.escape(panel['name'])}</b> 》\n━━━━━━━━━━━━━━━"
     if text_lines:
         body = "\n".join(text_lines)
@@ -1837,7 +1956,9 @@ def show_panel_ranges(chat_id, panel_id, message_id=None):
             text = f"{header}\n<b>No ranges added yet.</b>\n\n\u26a0\ufe0f <i>Add ranges with Country + Service + Country Code</i>\n<i>to start fetching numbers from API.</i>"
         else:
             text = f"{header}\n<b>No ranges added yet.</b>\n<i>Add ranges and then add numbers for this panel.</i>"
-    safe_edit(chat_id, text, markup, message_id)
+    result = safe_edit(chat_id, text, markup, message_id)
+    if result is None and message_id:
+        safe_send(chat_id, text, markup)
 
 def show_range_detail(chat_id, panel_id, rng_id, message_id=None):
     data = load_data()
@@ -1856,8 +1977,6 @@ def show_range_detail(chat_id, panel_id, rng_id, message_id=None):
     
     if f_type == "manual":
         nums = rng.get("numbers", [])
-        used = rng.get("used_numbers", [])
-        avail = len([n for n in nums if n not in used])
         cycle_status = "🟢 Active" if len(nums) > 0 else "🔴 Empty"
         text = (
             f"┌─────────────────┐\n"
@@ -1866,11 +1985,8 @@ def show_range_detail(chat_id, panel_id, rng_id, message_id=None):
             f"│ 📦 App: <b>{rng.get('app', 'N/A').upper()}</b>\n"
             f"│ 🔗 Service Code: <code>{rng_code}</code>\n"
             f"│ 🌍 Country Code: <code>{api_cc}</code>\n"
-            f"│ 📊 Total Added: <code>{len(nums)}</code>\n"
-            f"│ ✅ Available: <code>{avail}</code>\n"
-            f"│ 🔄 Served: <code>{len(used)}</code>\n"
+            f"│ 📊 Total Numbers: <code>{len(nums)}</code>\n"
             f"│ ♻️ Status: {cycle_status}\n"
-            f"│ 💡 <i>Numbers auto-recycle when all served</i>\n"
             f"└─────────────────┘"
         )
     else:
@@ -1889,20 +2005,23 @@ def show_range_detail(chat_id, panel_id, rng_id, message_id=None):
     markup = InlineKeyboardMarkup(row_width=2)
     
     if f_type == "manual":
-        markup.add(ibtn("➕ Add Numbers", callback_data=f"add_nums|{panel_id}|{rng_id}", style="success"))
+        markup.add(ibtn("➕ Add Numbers", callback_data=f"add_nums|{panel_id}|{rng_id}", style="primary"))
     markup.add(ibtn("❌ Delete Range", callback_data=f"del_range|{panel_id}|{rng_id}", style="danger"))
-    markup.add(ibtn("🔙 Back", callback_data=f"panel_ranges|{panel_id}", style="primary"))
-    safe_edit(chat_id, text, markup, message_id)
+    markup.add(ibtn("🔙 Back", callback_data=f"panel_ranges|{panel_id}", style="success"))
+    result = safe_edit(chat_id, text, markup, message_id)
+    if result is None and message_id:
+        safe_send(chat_id, text, markup)
 
 def show_app_list(chat_id, message_id=None):
     data = load_data()
     apps = data.get("apps", DEFAULT_APPS)
     markup = InlineKeyboardMarkup(row_width=1)
-    color_cycle = ["primary", "success", "danger"]
+    color_cycle = ["primary", "success", "danger", None]
     for idx, app in enumerate(apps):
-        markup.add(ibtn(f"❌ {emo(app)} {app}", callback_data=f"del_app|{app}", style=color_cycle[idx % 3]))
-    markup.add(ibtn("➕ Add App", callback_data="add_app", style="success"))
-    markup.add(ibtn("🔙 Back to Admin", callback_data="back_to_admin", style="primary"))
+        markup.add(ibtn(f"❌ {emo(app)} {app}", callback_data=f"del_app|{app}", style=color_cycle[idx % 4]))
+    _aas, _abs = _trail_styles(len(apps), color_cycle)
+    markup.add(ibtn("➕ Add App", callback_data="add_app", style=_aas))
+    markup.add(ibtn("🔙 Back to Admin", callback_data="back_to_admin", style=_abs))
     text = f"┌─────────────────┐\n│ 📦 <b>App Management</b>\n├─────────────────┤\n│ Total Apps: <code>{len(apps)}</code>\n│ <i>Tap to remove</i>\n└─────────────────┘"
     safe_edit(chat_id, text, markup, message_id)
 
@@ -1929,7 +2048,7 @@ def show_force_join_message(chat_id, reply_to=None):
     channels = data.get("force_join_channels", [])
     text = f"━━━━━━━━━━━━━━━\n《 ⚠️ <b>ACCESS DENIED</b> 》\n━━━━━━━━━━━━━━━\n📢 <b>JOIN OUR CHANNELS TO USE THIS BOT</b>\n\n<b>CLICK JOINED AFTER JOINING</b>"
     markup = InlineKeyboardMarkup()
-    color_cycle = ["primary", "success", "danger"]
+    color_cycle = ["primary", "success", "danger", None]
     for idx, ch in enumerate(channels):
         link = get_force_channel_link(ch)
         ch_type = get_force_channel_type(ch)
@@ -1938,14 +2057,10 @@ def show_force_join_message(chat_id, reply_to=None):
         else:
             btn_label = "📢 JOIN CHANNEL"
         if link:
-            markup.add(ibtn(text=btn_label, url=link, style=color_cycle[idx % 3]))
-    markup.add(ibtn(text="✅ JOINED ✅", callback_data="check_join", style="success"))
+            markup.add(ibtn(text=btn_label, url=link, style=color_cycle[idx % 4]))
+    _jstyle = color_cycle[len(channels) % 4] if channels else "success"
+    markup.add(ibtn(text="✅ JOINED", callback_data="check_join", style=_jstyle))
     safe_send(chat_id, text, markup, reply_to=reply_to)
-
-@bot.message_handler(content_types=['document'])
-def handle_document(message):
-    if message.chat.type != 'private':
-        return
 
 @bot.message_handler(func=lambda m: user_states.get(m.chat.id, {}).get("active_flow") is not None)
 def handle_active_flow(message):
@@ -1998,10 +2113,12 @@ def _flow_add_range_country(message):
     user_states[chat_id] = state
     
     markup = InlineKeyboardMarkup(row_width=2)
-    color_cycle = ["primary", "success", "danger"]
+    color_cycle = ["primary", "success", "danger", None]
     for idx, app in enumerate(load_data().get("apps", DEFAULT_APPS)):
-        markup.add(ibtn(f"{emo(app)} {app}", callback_data=f"rng_app_select|{panel_id}|{app}", style=color_cycle[idx % 3]))
-    markup.add(ibtn("🔙 Back", callback_data=f"panel_ranges|{panel_id}", style="primary"))
+        markup.add(ibtn(f"{emo(app)} {app}", callback_data=f"rng_app_select|{panel_id}|{app}", style=color_cycle[idx % 4]))
+    _app_count = len(load_data().get("apps", DEFAULT_APPS))
+    _rabs, _ = _trail_styles(_app_count, color_cycle)
+    markup.add(ibtn("🔙 Back", callback_data=f"panel_ranges|{panel_id}", style=_rabs))
     safe_edit(chat_id, f"━━━━━━━━━━━━━━━\n✅ <b>Country:</b> {html.escape(country_name)}\n━━━━━━━━━━━━━━━\n<b>Step 2/4: Select App/Server for this country:</b>", markup, msg_id)
 
 def _flow_add_range_service(message):
@@ -2044,11 +2161,9 @@ def _flow_add_range_cc(message):
             "app": app_name,
             "range_code": range_code,
             "country_code": country_code,
-            "numbers": [],
-            "used_numbers": []
+            "numbers": []
         }
         save_data(data)
-        bot.send_message(chat_id, f"✅ Range added!\n📍 Country: {rng_name}\n📱 Service: {range_code}\n🌍 Country Code: {country_code}\n📦 App: {app_name}", parse_mode="HTML")
     
     user_states.pop(chat_id, None)
     show_panel_ranges(chat_id, panel_id, msg_id)
@@ -2098,7 +2213,7 @@ def show_main_menu(chat_id, first_name=None, reply_to=None):
         try: first_name = bot.get_chat(chat_id).first_name
         except: first_name = "VIP User"
     data = load_data()
-    watermark = data.get("watermark", "DXA UNIVERSE")
+    watermark = data.get("watermark", "CREATED BY LEAVE")
     st = data.get("settings", {})
     text = (
         f"┌─────────────────────┐\n"
@@ -2121,7 +2236,7 @@ def show_main_menu(chat_id, first_name=None, reply_to=None):
 def show_user_services(chat_id):
     data = load_data()
     markup = InlineKeyboardMarkup(row_width=2)
-    color_cycle = ["primary", "success", "danger"]
+    color_cycle = ["primary", "success", "danger", None]
     apps = data.get("apps", DEFAULT_APPS)
     st = data.get("settings", {})
     
@@ -2146,13 +2261,14 @@ def show_user_services(chat_id):
             if has_stock: break
             
         if has_stock:
-            buttons.append(ibtn(text=f"{emo(app_name)} {app_name.upper()}", callback_data=f"usr_app|{app_name}", style=color_cycle[idx % 3]))
+            buttons.append(ibtn(text=f"{emo(app_name)} {app_name.upper()}", callback_data=f"usr_app|{app_name}", style=color_cycle[idx % 4]))
             
     if buttons: markup.add(*buttons)
     else:
         markup.add(ibtn("⚠️ NO SERVICE AVAILABLE", callback_data="ignore", style="danger"))
-    markup.add(ibtn("❌ CANCEL", callback_data="close_menu", style="danger"))
-    data_wm = data.get("watermark", "DXA UNIVERSE")
+    _cancel_style = color_cycle[len(buttons) % 4] if buttons else "success"
+    markup.add(ibtn("❌ CANCEL", callback_data="close_menu", style=_cancel_style))
+    data_wm = data.get("watermark", "CREATED BY LEAVE")
     safe_edit(chat_id, f"┌─────────────────────┐\n│  ⭐ <b>SERVER SELECTION</b>  │\n└─────────────────────┘\n\n🔍 <b>CHOOSE YOUR SERVICE BELOW</b>\n⚡ <b>FAST • SECURE • RELIABLE</b>\n\n永 <b>{html.escape(data_wm)}</b>", markup)
 
 def show_user_countries(chat_id, app_name, message_id=None):
@@ -2180,16 +2296,18 @@ def show_user_countries(chat_id, app_name, message_id=None):
     
     markup = InlineKeyboardMarkup(row_width=2)
     buttons = []
-    color_cycle = ["primary", "success", "danger"]
+    color_cycle = ["primary", "success", "danger", None]
     for idx, (key, cdata) in enumerate(countries.items()):
         if cdata["count"] == 0: continue
         flag = get_country_flag(cdata["name"])
         count_display = "API" if cdata["count"] == "API" else cdata["count"]
-        buttons.append(ibtn(text=f"{flag} {cdata['name'].upper()} [{count_display}]", callback_data=f"usr_cnt|{app_name}|{key}", style=color_cycle[idx % 3]))
+        buttons.append(ibtn(text=f"{flag} {cdata['name'].upper()} [{count_display}]", callback_data=f"usr_cnt|{app_name}|{key}", style=color_cycle[idx % 4]))
     
     if buttons:
         markup.add(*buttons)
-    markup.add(ibtn("🔙 BACK", callback_data="back_to_user_services", style="success"), ibtn("❌ CLOSE", callback_data="close_menu", style="danger"))
+    _cnt_trail1 = color_cycle[len(buttons) % 4] if buttons else "primary"
+    _cnt_trail2 = color_cycle[(len(buttons) + 1) % 4] if buttons else "success"
+    markup.add(ibtn("🔙 BACK", callback_data="back_to_user_services", style=_cnt_trail1), ibtn("❌ CLOSE", callback_data="close_menu", style=_cnt_trail2))
     text = f"┌─────────────────────┐\n│  🌍 <b>SELECT COUNTRY</b>  │\n└─────────────────────┘\n\n{emo(app_name)} <b>SERVER:</b> <code>{html.escape(app_name.upper())}</code>\n\n📍 <b>CHOOSE YOUR COUNTRY:</b>"
     safe_edit(chat_id, text, markup, message_id)
 
@@ -2202,31 +2320,39 @@ def show_2fa_menu_display(chat_id):
 def show_traffic_info(chat_id):
     data = load_data()
     traffic_log = data.get("traffic_log", {})
-    
-    if not traffic_log:
-        markup = InlineKeyboardMarkup()
-        markup.add(ibtn("🔄 REFRESH", callback_data="refresh_traffic", style="primary"))
-        markup.add(ibtn("❌ CLOSE", callback_data="close_menu", style="danger"))
-        safe_edit(chat_id, f"━━━━━━━━━━━━━━━\n《 📊 <b>NETWORK TRAFFIC</b> 》\n━━━━━━━━━━━━━━━\n<b>No traffic data yet.</b>", markup)
-        return
+    today_sms = data.get("today_sms", 0)
+    month_sms = data.get("month_sms", 0)
+    total_users = len(data.get("users", []))
+    active_panels = len([p for p in data.get("panels", {}).values() if p.get("status") == "active"])
     
     lines = []
     lines.append("┌─────────────────┐")
     lines.append("│  📶 <b>NETWORK TRAFFIC</b>  │")
     lines.append("└─────────────────┘")
     lines.append("")
+    lines.append(f"📊 <b>Today SMS:</b> <code>{today_sms}</code>")
+    lines.append(f"📈 <b>Month SMS:</b> <code>{month_sms}</code>")
+    lines.append(f"👥 <b>Total Users:</b> <code>{total_users}</code>")
+    lines.append(f"📋 <b>Active Panels:</b> <code>{active_panels}</code>")
+    lines.append("")
     
-    for app_name, countries in traffic_log.items():
-        app_emoji = emo(app_name)
-        lines.append(f"[ {app_emoji} <b>{html.escape(app_name)}</b> ]")
-        lines.append("")
-        sorted_countries = sorted(countries.items(), key=lambda x: x[1], reverse=True)
-        for country_name, success_count in sorted_countries:
-            flag = get_country_flag(country_name)
-            iso = get_iso_code(country_name)
-            lines.append(f"├─ {flag} <b>{html.escape(country_name)} ({iso})</b>")
-            lines.append(f"│  └ Success: {success_count}")
-        lines.append("")
+    if traffic_log:
+        total_success = sum(sum(c.values()) for c in traffic_log.values())
+        lines.append(f"🔑 <b>Total OTP Success:</b> <code>{total_success}</code>")
+        lines.append("━━━━━━━━━━━━━━━")
+        
+        for app_name, countries in traffic_log.items():
+            app_emoji = emo(app_name)
+            app_total = sum(countries.values())
+            lines.append(f"\n[ {app_emoji} <b>{html.escape(app_name)}</b> ] — <code>{app_total}</code>")
+            sorted_countries = sorted(countries.items(), key=lambda x: x[1], reverse=True)
+            for country_name, success_count in sorted_countries:
+                flag = get_country_flag(country_name)
+                iso = get_iso_code(country_name)
+                lines.append(f"├─ {flag} <b>{html.escape(country_name)} ({iso})</b>")
+                lines.append(f"│  └ Success: {success_count}")
+    else:
+        lines.append("<b>⚠️ No OTP traffic data yet.</b>")
     
     text = "\n".join(lines)
     if len(text) > 4000:
@@ -2234,7 +2360,7 @@ def show_traffic_info(chat_id):
     
     markup = InlineKeyboardMarkup()
     markup.add(ibtn("🔄 REFRESH", callback_data="refresh_traffic", style="primary"))
-    markup.add(ibtn("❌ CLOSE", callback_data="close_menu", style="danger"))
+    markup.add(ibtn("❌ CLOSE", callback_data="close_menu", style="success"))
     safe_edit(chat_id, text, markup)
 
 def log_traffic(app_name, country_name):
@@ -2251,6 +2377,8 @@ def log_traffic(app_name, country_name):
     save_data(data)
 
 def show_support(chat_id, first_name):
+    data = load_data()
+    support_link = format_url(data.get("settings", {}).get("support_link", "https://t.me/ADMIN_ASIK"))
     text = (
         f"┏━━━━━━━ 🌙 ━━━━━━━┓\n"
         f"═《 <b>𝗦𝗨𝗣𝗣𝗢𝗥𝗧</b> 》═\n"
@@ -2263,7 +2391,7 @@ def show_support(chat_id, first_name):
         f"┗━━━━━━━ ⚡ ━━━━━━━┛"
     )
     markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(ibtn("🎧 SUPPORT", url="https://t.me/sadhin8miya", style="success"), ibtn("🔙 BACK", callback_data="close_menu", style="danger"))
+    markup.add(ibtn("🎧 SUPPORT", url=support_link, style="primary"), ibtn("🔙 BACK", callback_data="close_menu", style="success"))
     safe_edit(chat_id, text, markup)
 
 def show_leaderboard(chat_id, message_id=None):
@@ -2281,7 +2409,7 @@ def show_leaderboard(chat_id, message_id=None):
             mention = f"<a href='tg://user?id={uid}'>{name}</a>"
             text += f"{stylish_nums[idx]}  {mention}  —  {count} OTP\n"
             text += "━━━━━━━━━━━━━━━\n"
-    watermark = data.get("watermark", "DXA UNIVERSE")
+    watermark = data.get("watermark", "CREATED BY LEAVE")
     text += f"\n🚀 <b>POWERED BY {html.escape(watermark)}</b>\n━━━━━━━━━━━━━━━"
     safe_edit(chat_id, text, get_leaderboard_menu(), message_id)
 
@@ -2294,7 +2422,7 @@ def show_admin_panel(chat_id, message_id=None):
     st = data.get("settings", {})
     active_panels = sum(1 for p in data.get("panels", {}).values() if p.get("status") == "active")
     total_panels = get_total_panels()
-    watermark = data.get("watermark", "DXA UNIVERSE")
+    watermark = data.get("watermark", "CREATED BY LEAVE")
     text = (
         f"┌─────────────────────┐\n"
         f"│  👑 <b>ADMIN CONTROL PANEL</b>  │\n"
@@ -2325,10 +2453,10 @@ def show_admin_system(chat_id, message_id=None):
     st = data.get("settings", {})
     markup = InlineKeyboardMarkup(row_width=2)
     
-    markup.add(ibtn(f"⏳ COOLDOWN: {st.get('cooldown', 60)}s", callback_data="sys_cool", style="danger"),
+    markup.add(ibtn(f"⏳ COOLDOWN: {st.get('cooldown', 60)}s", callback_data="sys_cool", style="primary"),
                ibtn(f"📱 NUM/REQ: {st.get('num_per_request', 5)}", callback_data="sys_num_req", style="success"))
-    markup.add(ibtn("🛠️ SUPPORT LINK", callback_data="sys_sup", style="primary"))
-    markup.add(ibtn("🔙 BACK", callback_data="back_to_admin", style="success"))
+    markup.add(ibtn("🛠️ SUPPORT LINK", callback_data="sys_sup", style="danger"))
+    markup.add(ibtn("🔙 BACK", callback_data="back_to_admin", style=None))
     
     text = (
         f"━━━━━━━━━━━━━━━\n"
@@ -2368,58 +2496,71 @@ def show_user_view(chat_id, message_id=None):
 def show_stock_info(chat_id, message_id=None):
     data = load_data()
     stock_data = {}
-    total_avail = 0
+    total_nums = 0
+    has_api = False
     
     for panel in data.get("panels", {}).values():
         if panel.get("status") != "active":
             continue
-        # Only count stock for Manual panels
-        if panel.get("fetch_type", "manual") == "auto":
-            continue
             
+        is_auto = panel.get("fetch_type", "manual") == "auto"
+        
         for rng in panel.get("ranges", {}).values():
             app = rng.get("app", "UNKNOWN").upper()
             cname = rng.get("name", "Unknown").title()
-            nums = rng.get("numbers", [])
-            used = rng.get("used_numbers", [])
-            avail = len([n for n in nums if n not in used])
             
-            if avail > 0:
-                if app not in stock_data:
-                    stock_data[app] = {}
-                stock_data[app][cname] = stock_data[app].get(cname, 0) + avail
-                total_avail += avail
+            if app not in stock_data:
+                stock_data[app] = {}
+            if cname not in stock_data[app]:
+                stock_data[app][cname] = {"total": 0, "api": False}
+            
+            if is_auto:
+                stock_data[app][cname]["api"] = True
+                has_api = True
+            else:
+                nums = rng.get("numbers", [])
+                total = len(nums)
+                stock_data[app][cname]["total"] += total
+                total_nums += total
 
     text = f"━━━━━━━━━━━━━━━\n《 📈 <b>STOCK INFO</b> 》\n━━━━━━━━━━━━━━━\n"
     
     if not stock_data:
-        text += "\n<b>⚠️ NO MANUAL STOCK AVAILABLE!</b>\n<b>PLEASE ADD NUMBERS IN PANELS.</b>\n"
+        text += "\n<b>⚠️ NO STOCK AVAILABLE!</b>\n<b>PLEASE ADD PANELS OR NUMBERS.</b>\n"
     else:
         for app, countries in stock_data.items():
             text += f"\n📦 <b>APP: {emo(app)} {app}</b>\n"
-            for country, count in sorted(countries.items(), key=lambda x: x[1], reverse=True):
+            for country, info in sorted(countries.items(), key=lambda x: (0 if x[1]["api"] else -x[1]["total"])):
                 flag = get_country_flag(country)
-                text += f" ├ {flag} <b>{country}:</b> <code>{count}</code> nums\n"
+                if info["api"] and info["total"] == 0:
+                    count_str = f"API ♾️"
+                elif info["api"] and info["total"] > 0:
+                    count_str = f"{info['total']} + API"
+                else:
+                    count_str = f"{info['total']}"
+                text += f" ├ {flag} <b>{country}:</b> <code>{count_str}</code>\n"
     
-    text += f"\n━━━━━━━━━━━━━━━\n📊 <b>TOTAL AVAILABLE:</b> <code>{total_avail}</code>\n━━━━━━━━━━━━━━━"
+    total_str = str(total_nums)
+    if has_api:
+        total_str += " + API"
+    text += f"\n━━━━━━━━━━━━━━━\n📊 <b>TOTAL:</b> <code>{total_str}</code>\n━━━━━━━━━━━━━━━"
     
     markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(ibtn("🔄 REFRESH", callback_data="refresh_stock", style="success"),
-               ibtn("❌ CLOSE", callback_data="close_menu", style="danger"))
+    markup.add(ibtn("🔄 REFRESH", callback_data="refresh_stock", style="primary"),
+               ibtn("❌ CLOSE", callback_data="close_menu", style="success"))
     safe_edit(chat_id, text, markup, message_id)
 
 # ==================== CALLBACK HANDLER ====================
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
-    try: bot.answer_callback_query(call.id)
-    except: pass
-
     user_id = call.from_user.id
     chat_id = call.message.chat.id
     msg_id = call.message.message_id
-
-    if call.data == "ignore": return
+    if call.data == "ignore":
+        try: bot.answer_callback_query(call.id)
+        except: pass
+        return
 
     # Only clear step handlers for navigation callbacks, not for input-related ones
     nav_prefixes = ("back_to", "admin_", "panel_view", "panel_ranges", "close_menu", "add_panel")
@@ -2428,10 +2569,14 @@ def handle_query(call):
 
     try:
         _handle_query_inner(call, user_id, chat_id, msg_id)
+        try: bot.answer_callback_query(call.id)
+        except: pass
     except Exception as e:
         try:
             bot.answer_callback_query(call.id, f"⚠️ Error: {str(e)[:50]}", show_alert=True)
-        except: pass
+        except:
+            try: safe_send(chat_id, f"⚠️ <b>Button Error:</b> {html.escape(str(e)[:100])}")
+            except: pass
 
 def _handle_query_inner(call, user_id, chat_id, msg_id):
     data = load_data()
@@ -2467,7 +2612,7 @@ def _handle_query_inner(call, user_id, chat_id, msg_id):
 
     if call.data == "check_join":
         if check_force_join(user_id):
-            wm = data.get("watermark", "DXA UNIVERSE")
+            wm = data.get("watermark", "CREATED BY LEAVE")
             bot.answer_callback_query(call.id, f"✅ Welcome to {wm}!", show_alert=True)
             try: bot.delete_message(chat_id, msg_id)
             except: pass
@@ -2487,7 +2632,7 @@ def _handle_query_inner(call, user_id, chat_id, msg_id):
         return
 
     # Admin check
-    admin_restricted_prefixes = ["adm_", "add_", "del_", "editgrp_", "delfjc_", "delfwd_", "delgrpbtn_", "deladm_", "addgrpbtn_", "unban_", "sys_", "panel_", "rng_app_select|", "add_range|", "view_range|", "del_range|", "del_app|", "add_nums|", "reset_used|", "set_pfmt|"]
+    admin_restricted_prefixes = ["adm_", "add_", "del_", "editgrp_", "delfjc_", "delfwd_", "delgrpbtn_", "deladm_", "addgrpbtn_", "unban_", "sys_", "panel_", "rng_app_select|", "add_range|", "view_range|", "del_range|", "del_app|", "add_nums|", "set_pfmt|"]
     admin_restricted_exact = ["admin_broadcast", "admin_group_settings", "admin_set_watermark", "admin_force_join", "toggle_force_join", "add_fjc", "back_to_admin", "admin_system", "admin_user_view", "admin_manage_panels", "admin_manage_apps", "admin_manage_admins", "add_panel", "add_app", "add_new_admin", "uv_profile", "uv_ban_menu", "uv_ban_do", "uv_unban_list", "set_main_otp_link", "del_main_otp_link", "add_fwd_group"]
     if any(call.data.startswith(x) for x in admin_restricted_prefixes) or call.data in admin_restricted_exact:
         if user_id != ADMIN_ID and user_id not in data.get("extra_admins", []):
@@ -2526,16 +2671,36 @@ def _handle_query_inner(call, user_id, chat_id, msg_id):
     elif call.data == "add_panel":
         markup = InlineKeyboardMarkup(row_width=1)
         markup.add(ibtn("📝 Manual (Admin Adds Nums)", callback_data="add_pnl_type|manual", style="primary"),
-                   ibtn("🤖 Auto API (Direct Fetch)", callback_data="add_pnl_type|auto", style="success"))
-        markup.add(ibtn("🔙 Back to Panels", callback_data="admin_manage_panels", style="danger"))
-        safe_edit(chat_id, f"━━━━━━━━━━━━━━━\n《 🔧 <b>Choose Panel Type</b> 》\n━━━━━━━━━━━━━━━\nSelect how numbers will be handled in this panel:", markup, msg_id)
+                   ibtn("🤖 Auto API (Direct Fetch)", callback_data="add_pnl_type|auto", style="success"),
+                   ibtn("🔐 Login Panel (Session Based)", callback_data="add_pnl_type|login", style="danger"))
+        markup.add(ibtn("🔙 Back to Panels", callback_data="admin_manage_panels"))
+        safe_edit(chat_id, f"━━━━━━━━━━━━━━━\n《 🔧 <b>Choose Panel Type</b> 》\n━━━━━━━━━━━━━━━\nSelect how numbers will be handled in this panel:\n\n📝 <b>Manual</b> — Admin adds numbers manually\n🤖 <b>Auto API</b> — Numbers fetched from API\n🔐 <b>Login Panel</b> — Session login (TimeSMS, INTS etc)", markup, msg_id)
         
     elif call.data.startswith("add_pnl_type|"):
         p_type = call.data.split("|")[1]
-        user_states[chat_id] = {"new_panel_fetch_type": p_type}
-        markup = InlineKeyboardMarkup().add(ibtn("🔙 Back to Panels", callback_data="admin_manage_panels", style="primary"))
-        type_str = "Manual (Txt)" if p_type == "manual" else "Auto API"
-        safe_edit(chat_id, f"━━━━━━━━━━━━━━━\n《 🔧 <b>Add Panel [{type_str}] — Step 1/3</b> 》\n━━━━━━━━━━━━━━━\n<b>Enter a name for this panel:</b>\n\n<b>Example:</b> Premium SMS", markup, msg_id)
+        if p_type == "login":
+            # Show sub-menu of login panel types
+            login_formats = {k: v for k, v in PANEL_FORMATS.items() if v.get("auth_type") == "session"}
+            markup = InlineKeyboardMarkup(row_width=1)
+            login_colors = ["primary", "success", "danger", None]
+            for l_idx, (fmt_key, fmt_val) in enumerate(login_formats.items()):
+                markup.add(ibtn(f"🔐 {fmt_val['label']}", callback_data=f"add_pnl_login_fmt|{fmt_key}", style=login_colors[l_idx % 4]))
+            markup.add(ibtn("🔙 Back", callback_data="add_panel", style="danger"))
+            fmt_list = "\n".join([f"• <b>{v['label']}</b>" for v in login_formats.values()])
+            safe_edit(chat_id, f"━━━━━━━━━━━━━━━\n《 🔐 <b>Choose Login Panel Type</b> 》\n━━━━━━━━━━━━━━━\nSelect which login panel you want to add:\n\n{fmt_list}", markup, msg_id)
+        else:
+            user_states[chat_id] = {"new_panel_fetch_type": p_type}
+            markup = InlineKeyboardMarkup().add(ibtn("🔙 Back to Panels", callback_data="admin_manage_panels", style="primary"))
+            type_str = "Manual (Txt)" if p_type == "manual" else "Auto API"
+            safe_edit(chat_id, f"━━━━━━━━━━━━━━━\n《 🔧 <b>Add Panel [{type_str}] — Step 1/3</b> 》\n━━━━━━━━━━━━━━━\n<b>Enter a name for this panel:</b>\n\n<b>Example:</b> Premium SMS", markup, msg_id)
+            bot.register_next_step_handler_by_chat_id(chat_id, process_add_panel_step1, msg_id)
+
+    elif call.data.startswith("add_pnl_login_fmt|"):
+        fmt_name = call.data.split("|")[1]
+        fmt_label = PANEL_FORMATS.get(fmt_name, {}).get("label", fmt_name)
+        user_states[chat_id] = {"new_panel_fetch_type": "login", "login_panel_format": fmt_name}
+        markup = InlineKeyboardMarkup().add(ibtn("🔙 Back", callback_data="add_pnl_type|login", style="primary"))
+        safe_edit(chat_id, f"━━━━━━━━━━━━━━━\n《 🔧 <b>Add Panel [{fmt_label}] — Step 1/3</b> 》\n━━━━━━━━━━━━━━━\n<b>Enter a name for this panel:</b>\n\n<b>Example:</b> Premium SMS", markup, msg_id)
         bot.register_next_step_handler_by_chat_id(chat_id, process_add_panel_step1, msg_id)
 
     elif call.data.startswith("panel_view|"):
@@ -2636,17 +2801,6 @@ def _handle_query_inner(call, user_id, chat_id, msg_id):
         markup = InlineKeyboardMarkup().add(ibtn("🔙 Back", callback_data=f"view_range|{panel_id}|{rng_id}", style="primary"))
         safe_edit(chat_id, f"━━━━━━━━━━━━━━━\n《 ➕ <b>Add Numbers to {html.escape(rng_name)}</b> 》\n━━━━━━━━━━━━━━━\n<b>Send numbers one per line or comma separated:</b>\n\n<code>923001234567</code>\n<code>923009876543</code>\n\n<b>Or send a .txt file with numbers.</b>", markup, msg_id)
         bot.register_next_step_handler_by_chat_id(chat_id, process_add_numbers_to_range, panel_id, rng_id, msg_id)
-    elif call.data.startswith("reset_used|"):
-        parts = call.data.split("|")
-        panel_id, rng_id = parts[1], parts[2]
-        panel = data.get("panels", {}).get(panel_id)
-        if panel:
-            rng = panel.get("ranges", {}).get(rng_id)
-            if rng:
-                rng["used_numbers"] = []
-                save_data(data)
-        bot.answer_callback_query(call.id, "Used numbers reset!", show_alert=True)
-        show_range_detail(chat_id, panel_id, rng_id, msg_id)
     elif call.data.startswith("del_range|"):
         parts = call.data.split("|")
         panel_id, rng_id = parts[1], parts[2]
@@ -2765,7 +2919,7 @@ def _handle_query_inner(call, user_id, chat_id, msg_id):
     # Watermark & Broadcast
     elif call.data == "admin_set_watermark":
         markup = InlineKeyboardMarkup().add(ibtn("🔙 CANCEL", callback_data="back_to_admin", style="primary"))
-        safe_edit(chat_id, f"━━━━━━━━━━━━━━━\n《 💎 <b>WATERMARK</b> 》\n━━━━━━━━━━━━━━━\n<b>CURRENT:</b> {data.get('watermark', 'DXA UNIVERSE')}\n\n<b>SEND NEW:</b>", markup, msg_id)
+        safe_edit(chat_id, f"━━━━━━━━━━━━━━━\n《 💎 <b>WATERMARK</b> 》\n━━━━━━━━━━━━━━━\n<b>CURRENT:</b> {data.get('watermark', 'CREATED BY LEAVE')}\n\n<b>SEND NEW:</b>", markup, msg_id)
         bot.register_next_step_handler_by_chat_id(chat_id, process_set_watermark, msg_id)
     elif call.data == "admin_broadcast":
         markup = InlineKeyboardMarkup().add(ibtn("🔙 CANCEL", callback_data="back_to_admin", style="danger"))
@@ -2801,7 +2955,7 @@ def process_2fa_refresh_logic(chat_id, secret_key):
         code = totp.now()
         remaining = 30 - (int(time.time()) % 30)
         tfa_data = load_data()
-        tfa_watermark = tfa_data.get("watermark", "DXA UNIVERSE")
+        tfa_watermark = tfa_data.get("watermark", "CREATED BY LEAVE")
         text = (
             f"━━━━━━━━━━━━━━━\n"
             f"《 🔐 <b>2FA CODE</b> 》\n"
@@ -2814,11 +2968,11 @@ def process_2fa_refresh_logic(chat_id, secret_key):
         )
         markup = InlineKeyboardMarkup(row_width=1)
         
-        markup.add(ibtn(f"📋 COPY: {code}", copy_text_str=code, style="success"))
+        markup.add(ibtn(f"📋 COPY: {code}", copy_text_str=code, style="primary"))
         
-        markup.add(ibtn("🔄 REFRESH CODE", callback_data="2fa_refresh", style="primary"),
+        markup.add(ibtn("🔄 REFRESH CODE", callback_data="2fa_refresh", style="success"),
                    ibtn("🆕 NEW CODE", callback_data="2fa_generate", style="danger"),
-                   ibtn("🔙 BACK", callback_data="2fa_back", style="success"))
+                   ibtn("🔙 BACK", callback_data="2fa_back"))
         safe_edit(chat_id, text, markup)
     except Exception as e:
         safe_edit(chat_id, "━━━━━━━━━━━━━━━\n《 ❌ <b>ERROR</b> 》\n━━━━━━━━━━━━━━━\n<b>INVALID 2FA KEY!</b>")
@@ -2930,7 +3084,11 @@ def process_add_panel_step1(message, msg_id):
     user_states[message.chat.id] = state
     
     markup = InlineKeyboardMarkup().add(ibtn("🔙 Back to Panels", callback_data="admin_manage_panels", style="primary"))
-    safe_edit(message.chat.id, f"━━━━━━━━━━━━━━━\n✅ <b>Name:</b> {html.escape(panel_name)}\n━━━━━━━━━━━━━━━\n<b>Step 2/3: Send the Panel API URL:</b>\n\n<b>Example:</b> https://yourpanel.com/api/sms", markup)
+    is_login = state.get("new_panel_fetch_type") == "login"
+    if is_login:
+        safe_edit(message.chat.id, f"━━━━━━━━━━━━━━━\n✅ <b>Name:</b> {html.escape(panel_name)}\n━━━━━━━━━━━━━━━\n<b>Step 2/3: Send the Panel Login URL:</b>\n\n<b>Example:</b> https://www.timesms.org/signin", markup)
+    else:
+        safe_edit(message.chat.id, f"━━━━━━━━━━━━━━━\n✅ <b>Name:</b> {html.escape(panel_name)}\n━━━━━━━━━━━━━━━\n<b>Step 2/3: Send the Panel API URL:</b>\n\n<b>Example:</b> https://yourpanel.com/api/sms", markup)
     bot.register_next_step_handler_by_chat_id(message.chat.id, process_add_panel_step2, msg_id)
 
 def process_add_panel_step2(message, msg_id):
@@ -2942,51 +3100,79 @@ def process_add_panel_step2(message, msg_id):
     state["add_panel_url"] = api_url
     user_states[message.chat.id] = state
     markup = InlineKeyboardMarkup().add(ibtn("🔙 Back to Panels", callback_data="admin_manage_panels", style="primary"))
-    safe_edit(message.chat.id, f"━━━━━━━━━━━━━━━\n✅ <b>API URL:</b> {html.escape(api_url)}\n━━━━━━━━━━━━━━━\n<b>Step 3/3: Send the API Token:</b>", markup)
+    is_login = state.get("new_panel_fetch_type") == "login"
+    if is_login:
+        safe_edit(message.chat.id, f"━━━━━━━━━━━━━━━\n✅ <b>Login URL:</b> {html.escape(api_url)}\n━━━━━━━━━━━━━━━\n<b>Step 3/3: Send username:password</b>\n\n<b>Example:</b> Sam0716:Sam0716", markup)
+    else:
+        safe_edit(message.chat.id, f"━━━━━━━━━━━━━━━\n✅ <b>API URL:</b> {html.escape(api_url)}\n━━━━━━━━━━━━━━━\n<b>Step 3/3: Send the API Token:</b>", markup)
     bot.register_next_step_handler_by_chat_id(message.chat.id, process_add_panel_step3, msg_id)
 
 def process_add_panel_step3(message, msg_id):
     if message.text == '/cancel': return show_panel_list(message.chat.id, msg_id)
     try: bot.delete_message(message.chat.id, message.message_id)
     except: pass
-    api_key = message.text.strip()
+    cred_input = message.text.strip()
     state = user_states.get(message.chat.id, {})
     panel_name = state.get("add_panel_name", "Panel")
     api_url = state.get("add_panel_url", "")
     fetch_type = state.get("new_panel_fetch_type", "manual")
-    
-    # Auto-configure: detect format, clean URL, test API
-    config = _auto_configure_panel(api_url, api_key)
-    clean_url = config["api_url"]
-    detected_fmt = config["api_format"]
-    fmt_label = config["fmt_label"]
+    is_login = fetch_type == "login"
     
     data = load_data()
     panel_id = "p_" + str(uuid.uuid4())[:8]
     panel_num_id = len(data.get("panels", {})) + 1
-    data.setdefault("panels", {})[panel_id] = {
-        "name": panel_name,
-        "type": "api",
-        "fetch_type": fetch_type,
-        "status": "active",
-        "api_url": clean_url,
-        "api_key": api_key,
-        "api_format": detected_fmt,
-        "login_url": "",
-        "login_user": "",
-        "login_pass": "",
-        "ranges": {}
-    }
-    save_data(data)
-    user_states.pop(message.chat.id, None)
     
-    # Show auto-configuration result
-    test_icon = "✅" if config["test_ok"] else "⚠️"
-    url_changed = f"\n🔄 URL Fixed: <code>{html.escape(clean_url)}</code>" if clean_url != api_url.rstrip("/") else ""
-    auto_note = ""
-    if fetch_type == "auto":
-        auto_note = "\n\n📌 <b>Next:</b> Add Ranges (Country + Service + Range Code) to start fetching numbers from API."
-    safe_send(message.chat.id, f"━━━━━━━━━━━━━━━\n🔧 Panel <b>{html.escape(panel_name)}</b> created!\nType: {fetch_type.upper()}\nFormat: {fmt_label}{url_changed}\n{test_icon} {config['test_msg']}\nID: {panel_num_id}{auto_note}\n━━━━━━━━━━━━━━━")
+    if is_login:
+        # Login panel: parse username:password
+        parts = cred_input.split(":", 1)
+        username = parts[0] if parts else ""
+        password = parts[1] if len(parts) > 1 else ""
+        detected_fmt = state.get("login_panel_format") or detect_panel_format(api_url, "")
+        clean_url = _get_api_base(api_url, detected_fmt)
+        
+        data.setdefault("panels", {})[panel_id] = {
+            "name": panel_name,
+            "type": "login",
+            "fetch_type": "manual",
+            "status": "active",
+            "api_url": clean_url,
+            "api_key": "",
+            "api_format": detected_fmt,
+            "login_url": api_url,
+            "login_user": username,
+            "login_pass": password,
+            "ranges": {}
+        }
+        save_data(data)
+        
+        # Auto-login test
+        panel = data["panels"][panel_id]
+        sess = do_login_session(panel)
+        if sess:
+            login_sessions[panel_id] = sess
+    else:
+        api_key = cred_input
+        # Auto-configure: detect format, clean URL, test API
+        config = _auto_configure_panel(api_url, api_key)
+        clean_url = config["api_url"]
+        detected_fmt = config["api_format"]
+        
+        data.setdefault("panels", {})[panel_id] = {
+            "name": panel_name,
+            "type": "api",
+            "fetch_type": fetch_type,
+            "status": "active",
+            "api_url": clean_url,
+            "api_key": api_key,
+            "api_format": detected_fmt,
+            "login_url": "",
+            "login_user": "",
+            "login_pass": "",
+            "ranges": {}
+        }
+        save_data(data)
+    
+    user_states.pop(message.chat.id, None)
     show_panel_detail(message.chat.id, panel_id)
 
 def process_set_api_url(message, panel_id, msg_id):
@@ -3009,15 +3195,11 @@ def process_set_api_key(message, panel_id, msg_id):
     data = load_data()
     panel = data.get("panels", {}).get(panel_id)
     if panel:
-        # Auto-configure: detect format, clean URL, test API
         config = _auto_configure_panel(api_url, api_key)
         panel["api_url"] = config["api_url"]
         panel["api_key"] = api_key
         panel["api_format"] = config["api_format"]
         save_data(data)
-        test_icon = "✅" if config["test_ok"] else "⚠️"
-        url_note = f"\n🔄 URL Fixed: <code>{html.escape(config['api_url'])}</code>" if config["api_url"] != api_url.rstrip("/") else ""
-        safe_send(message.chat.id, f"━━━━━━━━━━━━━━━\n✅ <b>API credentials saved!</b>\nFormat: {config['fmt_label']}{url_note}\n{test_icon} {config['test_msg']}\n━━━━━━━━━━━━━━━")
     user_states.pop(message.chat.id, None)
     show_panel_detail(message.chat.id, panel_id)
 
@@ -3052,10 +3234,6 @@ def process_set_login_creds(message, panel_id, msg_id):
         sess = do_login_session(panel)
         if sess:
             login_sessions[panel_id] = sess
-            token_info = "Token" if sess.get("token") else "Cookie"
-            safe_send(message.chat.id, f"━━━━━━━━━━━━━━━\n✅ <b>Login credentials saved!</b>\n🔑 Auth: {token_info}\n━━━━━━━━━━━━━━━")
-        else:
-            safe_send(message.chat.id, f"━━━━━━━━━━━━━━━\n⚠️ <b>Credentials saved but login test failed!</b>\n<i>Check URL/creds</i>\n━━━━━━━━━━━━━━━")
     user_states.pop(message.chat.id, None)
     show_panel_detail(message.chat.id, panel_id)
 
@@ -3114,12 +3292,8 @@ def process_add_numbers_to_range(message, panel_id, rng_id, msg_id):
                 new_nums = [n for n in numbers if n not in existing]
                 rng["numbers"].extend(new_nums)
                 save_data(data)
-                total_now = len(rng["numbers"])
-                safe_send(chat_id, f"┌─────────────────┐\n│ ✅ <b>Numbers Added!</b>\n├─────────────────┤\n│ ➕ Added: <code>{len(new_nums)}</code>\n│ ⏭️ Skipped (dupe): <code>{len(numbers) - len(new_nums)}</code>\n│ 📊 Total in range: <code>{total_now}</code>\n└─────────────────┘")
-    else:
-        safe_send(chat_id, "━━━━━━━━━━━━━━━\n❌ <b>No valid numbers found!</b>\n━━━━━━━━━━━━━━━")
     
-    show_range_detail(chat_id, panel_id, rng_id)
+    show_range_detail(chat_id, panel_id, rng_id, msg_id)
 
 def process_add_app(message, msg_id):
     if message.text == '/cancel': return show_app_list(message.chat.id, msg_id)
@@ -3213,8 +3387,9 @@ def process_system_setting(message, action, msg_id):
         elif action == "sys_num_req": data["settings"]["num_per_request"] = int(val)
         elif action == "sys_sup": data["settings"]["support_link"] = format_url(val)
     except ValueError:
-        safe_edit(message.chat.id, "<b>━━━━━━━━━━━━━━━\n《 ⚙️ SYSTEM SETTINGS 》\n━━━━━━━━━━━━━━━\n❌ INVALID FORMAT! MUST BE A NUMBER.</b>")
-        return show_admin_system(message.chat.id)
+        markup = InlineKeyboardMarkup().add(ibtn("🔙 BACK", callback_data="admin_system", style="success"))
+        safe_edit(message.chat.id, "━━━━━━━━━━━━━━━\n《 ⚙️ <b>SYSTEM SETTINGS</b> 》\n━━━━━━━━━━━━━━━\n❌ <b>INVALID FORMAT! MUST BE A NUMBER.</b>", markup)
+        return
         
     save_data(data)
     show_admin_system(message.chat.id)
@@ -3233,9 +3408,11 @@ def show_unban_list(chat_id, message_id=None):
     if not banned:
         safe_edit(chat_id, f"━━━━━━━━━━━━━━━\n《 ♻️ <b>UNBAN USER</b> 》\n━━━━━━━━━━━━━━━\n<b>✅ NO BANNED USERS FOUND!</b>", InlineKeyboardMarkup().add(ibtn("🔙 BACK", callback_data="uv_ban_menu", style="success")), message_id)
         return
-    for uid in banned:
-        markup.add(ibtn(f"♻️ UNBAN: {uid}", callback_data=f"unban_{uid}", style="success"))
-    markup.add(ibtn("🔙 BACK", callback_data="uv_ban_menu", style="primary"))
+    unban_colors = ["success", "primary", "danger", None]
+    for u_idx, uid in enumerate(banned):
+        markup.add(ibtn(f"♻️ UNBAN: {uid}", callback_data=f"unban_{uid}", style=unban_colors[u_idx % 4]))
+    _ubs, _ = _trail_styles(len(banned), unban_colors)
+    markup.add(ibtn("🔙 BACK", callback_data="uv_ban_menu", style=_ubs))
     safe_edit(chat_id, f"━━━━━━━━━━━━━━━\n《 ♻️ <b>UNBAN LIST</b> 》\n━━━━━━━━━━━━━━━\n<b>SELECT A USER TO UNBAN:</b>", markup, message_id)
 
 def process_do_ban(message, msg_id):
@@ -3283,11 +3460,12 @@ def show_manage_admins(chat_id, message_id=None):
     admins = data.get("extra_admins", [])
     markup = InlineKeyboardMarkup(row_width=1)
     
-    for adm in admins:
-        markup.add(ibtn(f"❌ REMOVE: {adm}", callback_data=f"deladm_{adm}", style="danger"))
-        
-    markup.add(ibtn("➕ ADD ADMIN", callback_data="add_new_admin", style="success"))
-    markup.add(ibtn("🔙 BACK", callback_data="back_to_admin", style="primary"))
+    adm_colors = ["danger", "primary", "success", None]
+    for a_idx, adm in enumerate(admins):
+        markup.add(ibtn(f"❌ REMOVE: {adm}", callback_data=f"deladm_{adm}", style=adm_colors[a_idx % 4]))
+    _adas, _adbs = _trail_styles(len(admins), adm_colors)
+    markup.add(ibtn("➕ ADD ADMIN", callback_data="add_new_admin", style=_adas))
+    markup.add(ibtn("🔙 BACK", callback_data="back_to_admin", style=_adbs))
     
     safe_edit(chat_id, f"━━━━━━━━━━━━━━━\n《 👮 <b>MANAGE ADMINS</b> 》\n━━━━━━━━━━━━━━━\n<b>TOTAL EXTRA ADMINS:</b> {len(admins)}", markup, message_id)
 
@@ -3491,17 +3669,13 @@ def fetch_number_logic(chat_id, app_name, country_key, message_id):
         if elapsed < cooldown_sec:
             remaining = int(cooldown_sec - elapsed)
             markup = InlineKeyboardMarkup()
-            markup.add(ibtn("🔙 BACK", callback_data="back_to_user_services", style="success"))
-            markup.add(ibtn("❌ CLOSE", callback_data="close_menu", style="danger"))
+            markup.add(ibtn("🔙 BACK", callback_data="back_to_user_services", style="primary"))
+            markup.add(ibtn("❌ CLOSE", callback_data="close_menu", style="success"))
             return safe_edit(chat_id, f"━━━━━━━━━━━━━━━\n《 ⏳ <b>COOLDOWN</b> 》\n━━━━━━━━━━━━━━━\n⚠️ <b>PLEASE WAIT {remaining}s BEFORE NEXT REQUEST</b>\n\n🕐 <b>Cooldown:</b> <code>{cooldown_sec}s</code>\n━━━━━━━━━━━━━━━", markup, message_id)
     
     req_limit = st.get("num_per_request", 5)
     if req_limit <= 0:
         req_limit = 5
-    
-    if req_limit <= 0:
-        markup = InlineKeyboardMarkup().add(ibtn("🔙 BACK", callback_data="back_to_user_services", style="success"))
-        return safe_edit(chat_id, "━━━━━━━━━━━━━━━\n《 ⚠️ <b>NOT CONFIGURED</b> 》\n━━━━━━━━━━━━━━━\n<b>ADMIN HAS NOT SET NUMBER LIMIT</b>\n<b>PLEASE WAIT FOR ADMIN</b>", markup, message_id)
 
     loading_text = f"━━━━━━━━━━━━━━━\n《 ⏳ <b>PROCESSING</b> 》\n━━━━━━━━━━━━━━━\n🔄 <b>PLEASE WAIT...</b>\n<i>FETCHING {app_name.upper()} NUMBERS...</i>\n━━━━━━━━━━━━━━━"
     if message_id:
@@ -3530,13 +3704,10 @@ def fetch_number_logic(chat_id, app_name, country_key, message_id):
             if f_type == "manual":
                 all_nums = rng.get("numbers", [])
                 if not all_nums: continue
-                used = rng.get("used_numbers", [])
-                avail = [n for n in all_nums if n not in used]
-                if not avail: rng["used_numbers"] = []; avail = list(all_nums)
+                avail = list(all_nums)
                 random.shuffle(avail)
                 for num in avail:
                     if len(numbers_found) >= req_limit: break
-                    rng.setdefault("used_numbers", []).append(num)
                     numbers_found.append({
                         "number": num, "number_id": f"{panel_id}_{rng_id}_{num}", "panel_id": panel_id,
                         "panel_name": panel.get("name", "Unknown"), "rng_id": rng_id,
@@ -3562,9 +3733,9 @@ def fetch_number_logic(chat_id, app_name, country_key, message_id):
     service_info = {'service_name': app_name, 'country_name': country_key.title(), 'app_name': app_name, 'country_key': country_key}
     
     markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(ibtn(f"💬 {app_name.upper()}", callback_data="ignore", style="success"))
+    markup.add(ibtn(f"💬 {app_name.upper()}", callback_data="ignore", style="primary"))
 
-    num_color_cycle = ["primary", "success", "danger"]
+    num_color_cycle = ["success", "danger", None, "primary"]
     for num_idx, num_data in enumerate(numbers_found):
         raw_num = str(num_data['number']).replace('+', '')
         full_num = f"+{raw_num}" if not raw_num.startswith('+') else raw_num
@@ -3573,12 +3744,17 @@ def fetch_number_logic(chat_id, app_name, country_key, message_id):
         detected_country = get_country_from_number(raw_num)
         num_flag = get_country_flag(detected_country) if detected_country else get_country_flag(country_key.title())
         btn_text = f"📋 {num_flag} {full_num}"
-        markup.add(ibtn(btn_text, copy_text_str=full_num, style=num_color_cycle[num_idx % 3]))
+        markup.add(ibtn(btn_text, copy_text_str=full_num, style=num_color_cycle[num_idx % 4]))
 
-    markup.row(ibtn("🔄 Change Number", callback_data=f"chg_local|{app_name}|{country_key}", style="danger"), ibtn("🌍 Change Country", callback_data=f"usr_app|{app_name}", style="primary"))
-    markup.add(ibtn("📨 OTP Group", url=main_link, style="primary"))
-    markup.add(ibtn("🔙 Back", callback_data="back_to_user_services", style="success"))
-    markup.add(ibtn("❌ Close", callback_data="close_menu", style="danger"))
+    _nc = len(numbers_found)
+    _nc_s1 = num_color_cycle[_nc % 4]
+    _nc_s2 = num_color_cycle[(_nc + 1) % 4]
+    _nc_s3 = num_color_cycle[(_nc + 2) % 4]
+    _nc_s4 = num_color_cycle[(_nc + 3) % 4]
+    markup.row(ibtn("🔄 Change Number", callback_data=f"chg_local|{app_name}|{country_key}", style=_nc_s1), ibtn("🌍 Change Country", callback_data=f"usr_app|{app_name}", style=_nc_s2))
+    markup.add(ibtn("📨 OTP Group", url=main_link, style=_nc_s3))
+    markup.add(ibtn("🔙 Back", callback_data="back_to_user_services", style=_nc_s4))
+    markup.add(ibtn("❌ Close", callback_data="close_menu", style=num_color_cycle[(_nc + 4) % 4]))
 
     active_polls[str(chat_id)] = {"numbers": numbers_found, "service_info": service_info, "message_id": message_id, "is_custom": False}
     safe_edit(chat_id, "ㅤ", markup, message_id)
@@ -3597,7 +3773,7 @@ def update_number_status(chat_id, number, status_text, emoji_status):
     message_id = poll_data.get("message_id")
     service_info = poll_data.get("service_info", {})
     fresh_data = load_data()
-    watermark = fresh_data.get("watermark", "DXA UNIVERSE")
+    watermark = fresh_data.get("watermark", "CREATED BY LEAVE")
     main_link = format_url(fresh_data.get("main_otp_link", "https://t.me/"))
     for num_data in numbers:
         if num_data["number"] == number:
@@ -3608,30 +3784,35 @@ def update_number_status(chat_id, number, status_text, emoji_status):
     
     markup = InlineKeyboardMarkup(row_width=1)
     
-    markup.add(ibtn(f"💬 {srv_name_upper}", callback_data="ignore", style="success"))
+    markup.add(ibtn(f"💬 {srv_name_upper}", callback_data="ignore", style="primary"))
     
     configured_flag_status = get_country_flag(service_info.get('country_name', ''))
     
-    num_color_cycle = ["primary", "success", "danger"]
+    num_color_cycle = ["success", "danger", None, "primary"]
     for num_idx, num_data in enumerate(numbers):
         raw_num = str(num_data['number']).replace('+', '')
         if not raw_num.startswith('+'):
             raw_num = f"+{raw_num}"
         
         btn_text = f"📋 {configured_flag_status} {raw_num}"
-        markup.add(ibtn(btn_text, copy_text_str=raw_num, style=num_color_cycle[num_idx % 3]))
+        markup.add(ibtn(btn_text, copy_text_str=raw_num, style=num_color_cycle[num_idx % 4]))
     
+    _nc2 = len(numbers)
+    _nc2_s1 = num_color_cycle[_nc2 % 4]
+    _nc2_s2 = num_color_cycle[(_nc2 + 1) % 4]
+    _nc2_s3 = num_color_cycle[(_nc2 + 2) % 4]
+    _nc2_s4 = num_color_cycle[(_nc2 + 3) % 4]
     if service_info.get('country_key') and service_info.get('app_name'):
         markup.row(
-            ibtn("🔄 Change Number", callback_data=f"chg_local|{service_info.get('app_name', '')}|{service_info.get('country_key', '')}", style="danger"),
-            ibtn("🌍 Change Country", callback_data=f"usr_app|{service_info.get('app_name', '')}", style="primary")
+            ibtn("🔄 Change Number", callback_data=f"chg_local|{service_info.get('app_name', '')}|{service_info.get('country_key', '')}", style=_nc2_s1),
+            ibtn("🌍 Change Country", callback_data=f"usr_app|{service_info.get('app_name', '')}", style=_nc2_s2)
         )
     else:
-        markup.add(ibtn("🔄 Change Number", callback_data="back_to_user_services", style="danger"))
+        markup.add(ibtn("🔄 Change Number", callback_data="back_to_user_services", style=_nc2_s1))
         
-    markup.add(ibtn("📨 OTP Group", url=main_link, style="primary"))
-    markup.add(ibtn("🔙 Back", callback_data="back_to_user_services", style="success"))
-    markup.add(ibtn("❌ Close", callback_data="close_menu", style="danger"))
+    markup.add(ibtn("📨 OTP Group", url=main_link, style=_nc2_s3))
+    markup.add(ibtn("🔙 Back", callback_data="back_to_user_services", style=_nc2_s4))
+    markup.add(ibtn("❌ Close", callback_data="close_menu", style=num_color_cycle[(_nc2 + 4) % 4]))
     
     try:
         clean_text = clean_html_tags(text)
@@ -3730,7 +3911,7 @@ def poll_otp_with_status(chat_id, num_data, service_info):
     fmt_name = panel.get("api_format", detect_panel_format(api_url, api_key)) if panel else "standard"
     fmt = PANEL_FORMATS.get(fmt_name, PANEL_FORMATS["standard"])
     
-    if p_type == "login":
+    if p_type == "login" or fmt_name == "ints_login":
         sess = get_login_session(panel_id)
         if not sess:
             # Try to login first
@@ -3753,6 +3934,8 @@ def poll_otp_with_status(chat_id, num_data, service_info):
         # For manual numbers, use phone-number-based polling
         if fmt_name == "lamix":
             pass  # Lamix polling is handled inline in the polling loop below
+        elif fmt_name == "ints_login":
+            pass  # ints_login CDR polling is handled inline in the polling loop below
         elif fmt_name == "ins_agent":
             base = _get_api_base(api_url, "ins_agent")
             sms_endpoint = f"{base}/api/functions/agent-api/otp?number={clean_phone}&limit=5"
@@ -3832,6 +4015,242 @@ def poll_otp_with_status(chat_id, num_data, service_info):
                                 first_poll = False
                             elif resp.get("status") == "success":
                                 first_poll = False
+                    except:
+                        pass
+                elif fmt_name == "timesms":
+                    # TimeSMS: poll client CDR endpoint with session + number filter
+                    try:
+                        timesms_base = _get_api_base(api_url or panel.get("login_url", ""), "timesms")
+                        http_sess = None
+                        if sess and sess.get("session"):
+                            http_sess = sess["session"]
+                        else:
+                            new_sess = do_login_session(panel)
+                            if new_sess:
+                                login_sessions[panel_id] = new_sess
+                                sess = new_sess
+                                http_sess = new_sess.get("session")
+                        if http_sess:
+                            _now = datetime.now()
+                            _dt1 = _now.strftime("%Y-%m-%d 00:00:00")
+                            _dt2 = _now.strftime("%Y-%m-%d %H:%M:%S")
+                            cdr_url = f"{timesms_base}/client/res/data_smscdr.php?fdate1={_dt1}&fdate2={_dt2}&fnum={clean_phone}&frange=&fcli=&fgdate=&fgmonth=&fgrange=&fgnumber=&fgcli=&fg=0&iDisplayLength=20&iSortCol_0=0&sSortDir_0=desc"
+                            cdr_headers = {'X-Requested-With': 'XMLHttpRequest', 'Referer': f'{timesms_base}/client/SMSCDRStats'}
+                            res = http_sess.get(cdr_url, headers=cdr_headers, timeout=15)
+                            if res.status_code == 200:
+                                try:
+                                    resp = res.json()
+                                except:
+                                    resp = {}
+                                rows = resp.get("aaData", [])
+                                for row in rows:
+                                    if not isinstance(row, list) or len(row) < 5:
+                                        continue
+                                    row_dt = str(row[0]) if row[0] else ""
+                                    if not row_dt or "2" not in row_dt[:1]:
+                                        continue
+                                    row_num = str(row[2]).replace("+", "").strip() if row[2] else ""
+                                    row_cli = str(row[3]) if row[3] else ""
+                                    row_sms = str(row[4]) if row[4] else ""
+                                    if not row_num or not row_sms or row_sms == "******":
+                                        continue
+                                    if row_num != clean_phone and not clean_phone.endswith(row_num) and not row_num.endswith(clean_phone):
+                                        continue
+                                    item_id = f"{row_dt}_{row_num}_{row_cli}"
+                                    if first_poll:
+                                        seen_otp_ids.add(item_id)
+                                        continue
+                                    if item_id and item_id not in seen_otp_ids:
+                                        seen_otp_ids.add(item_id)
+                                        otp_val = ""
+                                        if row_sms:
+                                            m = re.search(r'(?:code|otp|Code|OTP|kod|pin|codigo|Codigo)\D{0,15}(\d{4,8})', row_sms, re.IGNORECASE)
+                                            if m:
+                                                otp_val = m.group(1)
+                                            else:
+                                                m = re.search(r'(\d{4,8})', row_sms)
+                                                if m: otp_val = m.group(1)
+                                            if not otp_val:
+                                                m = re.search(r'([a-zA-Z0-9-]{4,10})\s*$', row_sms)
+                                                if m: otp_val = m.group(1)
+                                        if otp_val:
+                                            has_otp = True
+                                            otp_code = str(otp_val)
+                                            full_sms = str(row_sms)
+                                            app_name_from_api = row_cli or service_info.get('service_name', '')
+                                            break
+                                first_poll = False
+                            elif res.status_code in (302, 401, 403):
+                                new_sess = do_login_session(panel)
+                                if new_sess:
+                                    login_sessions[panel_id] = new_sess
+                                    sess = new_sess
+                    except:
+                        pass
+                elif fmt_name == "ints_login":
+                    # INTS Login: poll SMS CDR endpoint with session + number filter
+                    try:
+                        ints_base = _get_api_base(api_url or panel.get("login_url", ""), "ints_login")
+                        http_sess = None
+                        if sess and sess.get("session"):
+                            http_sess = sess["session"]
+                        else:
+                            # Need to login first
+                            new_sess = do_login_session(panel)
+                            if new_sess:
+                                login_sessions[panel_id] = new_sess
+                                sess = new_sess
+                                http_sess = new_sess.get("session")
+                        if http_sess:
+                            _now = datetime.now()
+                            _dt1 = _now.strftime("%Y-%m-%d 00:00:00")
+                            _dt2 = _now.strftime("%Y-%m-%d %H:%M:%S")
+                            cdr_url = f"{ints_base}/agent/res/data_smscdr.php?fdate1={_dt1}&fdate2={_dt2}&fnum={clean_phone}&frange=&fclient=&fcli=&fg=0&iDisplayLength=20&iSortCol_0=0&sSortDir_0=desc"
+                            cdr_headers = {'X-Requested-With': 'XMLHttpRequest', 'Referer': f'{ints_base}/agent/SMSCDRReports'}
+                            res = http_sess.get(cdr_url, headers=cdr_headers, timeout=15)
+                            if res.status_code == 200:
+                                resp = res.json()
+                                rows = resp.get("aaData", [])
+                                for row in rows:
+                                    if not isinstance(row, list) or len(row) < 6:
+                                        continue
+                                    row_dt = str(row[0]) if row[0] else ""
+                                    row_num = str(row[2]).replace("+", "").strip() if row[2] else ""
+                                    row_cli = str(row[3]) if row[3] else ""
+                                    row_sms = str(row[5]) if row[5] else ""
+                                    if not row_num or not row_sms or row_sms == "********":
+                                        continue
+                                    if row_num != clean_phone and not clean_phone.endswith(row_num) and not row_num.endswith(clean_phone):
+                                        continue
+                                    item_id = f"{row_dt}_{row_num}_{row_cli}"
+                                    if first_poll:
+                                        seen_otp_ids.add(item_id)
+                                        continue
+                                    if item_id and item_id not in seen_otp_ids:
+                                        seen_otp_ids.add(item_id)
+                                        otp_val = ""
+                                        if row_sms:
+                                            m = re.search(r'(?:code|otp|Code|OTP|kod|pin)\D{0,10}(\d{4,8})', row_sms, re.IGNORECASE)
+                                            if m:
+                                                otp_val = m.group(1)
+                                            else:
+                                                m = re.search(r'(\d{4,8})', row_sms)
+                                                if m: otp_val = m.group(1)
+                                            if not otp_val:
+                                                m = re.search(r'([a-zA-Z0-9]{4,10})\s*$', row_sms)
+                                                if m: otp_val = m.group(1)
+                                        if otp_val:
+                                            has_otp = True
+                                            otp_code = str(otp_val)
+                                            full_sms = str(row_sms)
+                                            app_name_from_api = row_cli or service_info.get('service_name', '')
+                                            break
+                                first_poll = False
+                            elif res.status_code in (302, 401, 403):
+                                # Session expired, re-login
+                                new_sess = do_login_session(panel)
+                                if new_sess:
+                                    login_sessions[panel_id] = new_sess
+                                    sess = new_sess
+                    except:
+                        pass
+                elif fmt_name == "konekta":
+                    # Konekta Premium: poll CDR endpoint with session + number filter
+                    try:
+                        konekta_base = _get_api_base(api_url or panel.get("login_url", ""), "konekta")
+                        http_sess = None
+                        if sess and sess.get("session"):
+                            http_sess = sess["session"]
+                        else:
+                            new_sess = do_login_session(panel)
+                            if new_sess:
+                                login_sessions[panel_id] = new_sess
+                                sess = new_sess
+                                http_sess = new_sess.get("session")
+                        if http_sess:
+                            _now = datetime.now()
+                            _dt1 = _now.strftime("%Y-%m-%d 00:00:00")
+                            _dt2 = _now.strftime("%Y-%m-%d %H:%M:%S")
+                            # Try regular CDR (allocated numbers, full SMS)
+                            sesskey = sess.get("sesskey", "")
+                            cdr_url = f"{konekta_base}/agent/res/data_smscdr.php?fdate1={_dt1}&fdate2={_dt2}&fnum={clean_phone}&frange=&fclient=&fcli=&fgdate=&fgmonth=&fgrange=&fgclient=&fgnumber=&fgcli=&fg=0&sesskey={sesskey}&iDisplayLength=20&iSortCol_0=0&sSortDir_0=desc"
+                            cdr_headers = {'X-Requested-With': 'XMLHttpRequest', 'Referer': f'{konekta_base}/agent/SMSCDRStats'}
+                            res = http_sess.get(cdr_url, headers=cdr_headers, timeout=15)
+                            cdr_rows = []
+                            if res.status_code == 200:
+                                try:
+                                    resp = res.json()
+                                    cdr_rows = resp.get("aaData", [])
+                                except:
+                                    pass
+                            # Also try test CDR endpoint
+                            if not cdr_rows or all(not isinstance(r, list) or len(r) < 5 or str(r[4]) == "********" for r in cdr_rows):
+                                test_cdr_url = f"{konekta_base}/agent/res/data_testsmscdr.php?fnum={clean_phone}&iDisplayLength=20&iSortCol_0=0&sSortDir_0=desc"
+                                test_headers = {'X-Requested-With': 'XMLHttpRequest', 'Referer': f'{konekta_base}/agent/SMSTestPanel'}
+                                res2 = http_sess.get(test_cdr_url, headers=test_headers, timeout=15)
+                                if res2.status_code == 200:
+                                    try:
+                                        resp2 = res2.json()
+                                        test_rows = resp2.get("aaData", [])
+                                        if test_rows:
+                                            cdr_rows = test_rows
+                                    except:
+                                        pass
+                            # Also try CR API with token if available
+                            cr_token = panel.get("api_key", "")
+                            if not cdr_rows and cr_token:
+                                try:
+                                    cr_url = f"http://51.77.216.195/crapi/konek/viewstats?token={cr_token}&records=20&number={clean_phone}"
+                                    cr_res = requests.get(cr_url, timeout=15)
+                                    if cr_res.status_code == 200:
+                                        cr_data = cr_res.json()
+                                        if cr_data.get("status") == "success" and isinstance(cr_data.get("data"), list):
+                                            for item in cr_data["data"]:
+                                                cdr_rows.append([item.get("date",""), item.get("range",""), item.get("number",""), item.get("cli",""), item.get("sms","")])
+                                except:
+                                    pass
+                            for row in cdr_rows:
+                                if not isinstance(row, list) or len(row) < 5:
+                                    continue
+                                row_dt = str(row[0]) if row[0] else ""
+                                if not row_dt or "2" not in row_dt[:1]:
+                                    continue
+                                row_num = str(row[2]).replace("+", "").strip() if row[2] else ""
+                                row_cli = str(row[3]) if row[3] else ""
+                                row_sms = str(row[4]) if row[4] else ""
+                                if not row_num or not row_sms or row_sms == "********" or row_sms == "******":
+                                    continue
+                                if row_num != clean_phone and not clean_phone.endswith(row_num) and not row_num.endswith(clean_phone):
+                                    continue
+                                item_id = f"{row_dt}_{row_num}_{row_cli}"
+                                if first_poll:
+                                    seen_otp_ids.add(item_id)
+                                    continue
+                                if item_id and item_id not in seen_otp_ids:
+                                    seen_otp_ids.add(item_id)
+                                    otp_val = ""
+                                    if row_sms:
+                                        m = re.search(r'(?:code|otp|Code|OTP|kod|pin|codigo|Codigo)\D{0,15}(\d{4,8})', row_sms, re.IGNORECASE)
+                                        if m:
+                                            otp_val = m.group(1)
+                                        else:
+                                            m = re.search(r'(\d{4,8})', row_sms)
+                                            if m: otp_val = m.group(1)
+                                        if not otp_val:
+                                            m = re.search(r'([a-zA-Z0-9-]{4,10})\s*$', row_sms)
+                                            if m: otp_val = m.group(1)
+                                    if otp_val:
+                                        has_otp = True
+                                        otp_code = str(otp_val)
+                                        full_sms = str(row_sms)
+                                        app_name_from_api = row_cli or service_info.get('service_name', '')
+                                        break
+                            first_poll = False
+                            if res.status_code in (302, 401, 403):
+                                new_sess = do_login_session(panel)
+                                if new_sess:
+                                    login_sessions[panel_id] = new_sess
+                                    sess = new_sess
                     except:
                         pass
                 elif fmt_name == "ins_agent" and sms_endpoint:
@@ -4002,7 +4421,7 @@ def poll_otp_with_status(chat_id, num_data, service_info):
                 log_traffic(detected_service, service_info.get("country_name", "Unknown"))
                 
                 data = load_data()
-                watermark = data.get("watermark", "DXA UNIVERSE")
+                watermark = data.get("watermark", "CREATED BY LEAVE")
                 
                 try:
                     chat = bot.get_chat(chat_id)
@@ -4019,31 +4438,40 @@ def poll_otp_with_status(chat_id, num_data, service_info):
                 panel_label = f" 📋{html.escape(panel_name)}" if panel_name else ""
                 
                 # INBOX MSG - sent to user in bot
+                svc_display = detected_service if detected_service != "Unknown" else app_name_from_api or service_info.get('service_name', '')
+                svc_tag = f" | {srv_emoji} <b>{html.escape(svc_display.upper())}</b>" if svc_display else ""
+                sms_line = f"│ 💬 <i>{html.escape(full_sms[:120])}</i>\n" if full_sms else ""
                 inbox_msg = (
-                    f"{flag} #{cc} {srv_emoji} +{clean_num}{panel_label}\n"
-                    f"\n"
-                    f"永 <b>POWERED BY {html.escape(watermark)}</b> 🔴"
+                    f"┌─────────────────┐\n"
+                    f"│ {flag} <b>+{clean_num}</b>{svc_tag}\n"
+                    f"│ 🔑 <b>OTP:</b> <code>{otp_code}</code>\n"
+                    f"├─────────────────┤\n"
+                    f"{sms_line}"
+                    f"└─────────────────┘\n"
+                    f"永 <b>{html.escape(watermark)}</b>"
                 )
                 
                 inbox_markup = InlineKeyboardMarkup(row_width=1)
-                inbox_markup.add(ibtn(f"🔑 📋 OTP: {otp_code}", copy_text_str=otp_code, style="success"))
+                inbox_markup.add(ibtn(f"🔑 OTP: {otp_code}", copy_text_str=otp_code, style="success"))
                 
                 safe_send(chat_id, inbox_msg, inbox_markup)
                 
                 main_link_grp = format_url(data.get("main_otp_link", "https://t.me/"))
                 
-                # GROUP MSG - sent to all forward groups
+                # GROUP MSG - sent to all forward groups (OTP hidden)
                 group_msg = (
-                    f"{flag} #{cc} {srv_emoji} +{masked_num}{panel_label}\n"
-                    f"\n"
-                    f"永 <b>POWERED BY {html.escape(watermark)}</b> 🔴"
+                    f"┌─────────────────┐\n"
+                    f"│ {flag} <b>+{masked_num}</b>{svc_tag}\n"
+                    f"│ 🔑 <b>OTP Received</b> ✅\n"
+                    f"└─────────────────┘\n"
+                    f"永 <b>{html.escape(watermark)}</b>"
                 )
                 
                 for grp in data.get("forward_groups", []):
                     try:
                         grp_markup = InlineKeyboardMarkup(row_width=1)
-                        grp_markup.add(ibtn(f"🔑 📋 OTP: {otp_code}", copy_text_str=otp_code, style="success"))
-                        color_cycle_grp = ["danger", "primary", "success"]
+                        grp_markup.add(ibtn("🔑 Tap to Copy OTP", copy_text_str=otp_code, style="success"))
+                        color_cycle_grp = ["danger", None, "primary", "success"]
                         for b_idx, btn in enumerate(grp.get("buttons", [])):
                             grp_markup.add(ibtn(btn['name'], url=btn['url'], style=color_cycle_grp[b_idx % len(color_cycle_grp)]))
                         safe_send(grp['chat_id'], group_msg, grp_markup)
@@ -4056,9 +4484,9 @@ def poll_otp_with_status(chat_id, num_data, service_info):
                             f"🔔 <b>OTP RECEIVED</b>\n"
                             f"━━━━━━━━━━━━━━━\n"
                             f"👤 User: <code>{chat_id}</code>\n"
-                            f"{flag} #{cc} {srv_emoji} +{clean_num}\n"
-                            f"🔑 OTP: <code>{otp_code}</code>\n"
-                            f"📋 Panel: {panel_label}\n"
+                            f"{flag} {srv_emoji} <b>{html.escape(svc_display.upper() if svc_display else 'SMS')}</b>\n"
+                            f"📞 Number: <code>+{clean_num}</code>\n"
+                            f"🔑 OTP: <code>{otp_code}</code>{panel_label}\n"
                             f"━━━━━━━━━━━━━━━"
                         )
                         safe_send(ADMIN_ID, admin_msg)
@@ -4071,8 +4499,10 @@ def poll_otp_with_status(chat_id, num_data, service_info):
 
 # ==================== GLOBAL SMS LISTENER ====================
 forwarded_sms_ids = set()
+_gl_first_poll = True
 
 def global_sms_listener():
+    global _gl_first_poll
     while True:
         try:
             data = load_data()
@@ -4127,10 +4557,19 @@ def global_sms_listener():
                         if msg_id and msg_id not in forwarded_sms_ids:
                             forwarded_sms_ids.add(msg_id)
                             
+                            # On first poll after restart, only record IDs — don't forward old messages
+                            if _gl_first_poll:
+                                continue
+                            
                             number = msg.get("number", "Unknown")
                             sms_text = msg.get("sms", "") or msg.get("message", "") or msg.get("message_text", "")
-                            otp_code = msg.get("otp", "") or msg.get("otp_code", "")
+                            otp_code = msg.get("otp", "") or msg.get("otp_code", "") or msg.get("code", "")
                             app_name = msg.get("service", "") or msg.get("app_name", "") or msg.get("platform", "")
+                            
+                            # Extract OTP from SMS text if not provided directly
+                            if not otp_code and sms_text:
+                                m = re.search(r'(\d{4,8})', sms_text)
+                                if m: otp_code = m.group(1)
                             
                             detected_service = detect_service_from_sms(sms_text, app_name)
                             lang_code = detect_language(sms_text)
@@ -4143,20 +4582,25 @@ def global_sms_listener():
                             cc = get_iso_code(detected_country)
                             srv_emoji = emo(detected_service)
                             
-                            gl_watermark = data.get("watermark", "DXA UNIVERSE")
+                            gl_watermark = data.get("watermark", "CREATED BY LEAVE")
+                            svc_display_gl = detected_service if detected_service != "Unknown" else app_name or ""
+                            svc_tag_gl = f" | {srv_emoji} <b>{html.escape(svc_display_gl.upper())}</b>" if svc_display_gl else ""
                             
+                            otp_line = f"│ 🔑 <b>OTP Received</b> ✅\n" if otp_code else ""
                             group_msg = (
-                                f"{flag} #{cc} {srv_emoji} +{masked_num}{p_label}\n"
-                                f"\n"
-                                f"永 <b>POWERED BY {html.escape(gl_watermark)}</b> 🔴"
+                                f"┌─────────────────┐\n"
+                                f"│ {flag} <b>+{masked_num}</b>{svc_tag_gl}\n"
+                                f"{otp_line}"
+                                f"└─────────────────┘\n"
+                                f"永 <b>{html.escape(gl_watermark)}</b>"
                             )
                             
                             for grp in data.get("forward_groups", []):
                                 try:
                                     grp_markup = InlineKeyboardMarkup(row_width=1)
                                     if otp_code:
-                                        grp_markup.add(ibtn(f"🔑 📋 OTP: {otp_code}", copy_text_str=otp_code, style="success"))
-                                    color_cycle_gl = ["danger", "primary", "success"]
+                                        grp_markup.add(ibtn("🔑 Tap to Copy OTP", copy_text_str=otp_code, style="success"))
+                                    color_cycle_gl = ["danger", None, "primary", "success"]
                                     for b_idx, btn in enumerate(grp.get("buttons", [])):
                                         grp_markup.add(ibtn(btn['name'], url=btn['url'], style=color_cycle_gl[b_idx % len(color_cycle_gl)]))
                                     safe_send(grp['chat_id'], group_msg, grp_markup)
@@ -4165,6 +4609,8 @@ def global_sms_listener():
         except Exception as e:
             pass
         
+        if _gl_first_poll:
+            _gl_first_poll = False
         time.sleep(5)
 
 if __name__ == "__main__":
@@ -4172,8 +4618,16 @@ if __name__ == "__main__":
         bot.set_my_commands([telebot.types.BotCommand("/start", "🚀 Start Number Bot")])
     except: pass
     
+    # Force take over polling - disconnect any other instance
+    try:
+        bot.delete_webhook(drop_pending_updates=True)
+    except: pass
+    try:
+        bot.get_updates(offset=-1, timeout=1)
+    except: pass
+    
     print("🔄 Starting Global SMS Listener...")
     threading.Thread(target=global_sms_listener, daemon=True).start()
     
-    print("👑 SpyX Premium - Bot Running with Custom Colorful Buttons! 👑")
+    print("👑 CREATED BY LEAVE - Bot Running with Custom Colorful Buttons! 👑")
     bot.infinity_polling(timeout=30, long_polling_timeout=25, allowed_updates=["message", "callback_query"])
