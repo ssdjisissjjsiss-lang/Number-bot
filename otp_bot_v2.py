@@ -402,7 +402,7 @@ def _tg_raw_send(text, keyboard=None):
         time.sleep(0.05)
 
 def _mask_number(num_clean):
-    """Middle digits replace with CDY. e.g. 8801712345678 → 8801712CDY678"""
+    """Middle digits replace with SPYX. e.g. 8801712345678 → 8801712CDY678"""
     if len(num_clean) < 7:
         return num_clean
     keep_start = len(num_clean) - 3
