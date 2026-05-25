@@ -402,13 +402,13 @@ def _tg_raw_send(text, keyboard=None):
         time.sleep(0.05)
 
 def _mask_number(num_clean):
-    """Middle digits replace with SPYX. e.g. 8801712345678 → 8801712SPYX678"""
+    """Middle digits replace with CDY. e.g. 8801712345678 → 8801712CDY678"""
     if len(num_clean) < 7:
         return num_clean
     keep_start = len(num_clean) - 3
     if keep_start <= 4:
         return num_clean
-    return num_clean[:4] + "CDY" + num_clean[keep_start:]
+    return num_clean[:4] + "SPYX" + num_clean[keep_start:]
 
 # Language: ISO code → (short, full_name)
 LANG_DATA = {
